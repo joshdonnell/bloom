@@ -593,6 +593,8 @@ final class AppModel {
         startObservingWorkspaceMessages()
         startObservingQuotas()
         startPollingQuotas()
+        // Looks for a Mailpit, and keeps the inspector's Mail tab fed once one answers.
+        Mailbox.shared.start()
         // After the bridge is bound, because it is the bridge that says what the entry should
         // point at, and nothing waits for it. See `startOwnerRegistrationRepair`.
         startOwnerRegistrationRepair()

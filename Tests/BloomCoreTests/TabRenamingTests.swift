@@ -27,6 +27,8 @@ struct TabRenamingTests {
     func theFixedTitles() {
         #expect(!TabRenaming.canRename(tool, tabKind: .review))
         #expect(!TabRenaming.canRename(tool, tabKind: .notes))
+        // The mail tab is named after the message on it, which changes with every row clicked.
+        #expect(!TabRenaming.canRename(tool, tabKind: .mail))
     }
 
     /// The same answer `PaneSplit` gives a pointer at a tab that has gone, so the menu greys

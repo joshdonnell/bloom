@@ -65,7 +65,7 @@ struct InspectorTabTests {
     @Test("a selection that is still on offer is left alone", arguments: InspectorTab.allCases)
     func selectionSurvives(_ tab: InspectorTab) {
         let open = pullRequest(checks: .failing, summary: "1 required check failed")
-        #expect(InspectorTab.resolve(tab, available: InspectorTab.available(for: open)) == tab)
+        #expect(InspectorTab.resolve(tab, available: InspectorTab.available(for: open, showsMail: true)) == tab)
     }
 
     @Test("Checks selected, then the pull request goes, falls back to Changes")
@@ -88,6 +88,28 @@ struct InspectorTabTests {
     func allFilesIsUnconditional() {
         #expect(InspectorTab.available(for: nil).contains(.allFiles))
         #expect(InspectorTab.resolve(.allFiles, available: InspectorTab.available(for: nil)) == .allFiles)
+    }
+
+    // MARK: - Mail
+
+    @Test("no Mailpit means no Mail tab")
+    func noMailByDefault() {
+        #expect(!InspectorTab.available(for: nil).contains(.mail))
+    }
+
+    /// Mail arrives once a launch and Checks with every refresh, so Mail goes before Checks and
+    /// Checks keeps the end of the strip, where its coming and going moves nothing.
+    @Test("Mail sits after History and before Checks")
+    func mailBeforeChecks() {
+        let open = pullRequest(checks: .passing, summary: "1 check passed")
+        #expect(InspectorTab.available(for: nil, showsMail: true) == [.allFiles, .changes, .history, .mail])
+        #expect(InspectorTab.available(for: open, showsMail: true) == [.allFiles, .changes, .history, .mail, .checks])
+    }
+
+    @Test("Mail selected, then the tab goes, falls back to Changes")
+    func mailFallsBack() {
+        #expect(InspectorTab.resolve(.mail, available: InspectorTab.available(for: nil)) == .changes)
+        #expect(InspectorTab.resolve(.mail, available: InspectorTab.available(for: nil, showsMail: true)) == .mail)
     }
 
     @Test("the fallback is one of the tabs that is always there")

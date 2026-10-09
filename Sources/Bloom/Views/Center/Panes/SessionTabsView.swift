@@ -299,6 +299,7 @@ struct SessionTabsView: View {
         case .browser: "Close browser"
         case .review: "Close the review"
         case .notes: "Close the notes"
+        case .mail: "Close the mail"
         }
     }
 

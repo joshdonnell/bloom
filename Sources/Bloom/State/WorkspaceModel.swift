@@ -106,7 +106,9 @@ final class WorkspaceModel {
     private var chosenInspectorTab: InspectorTab = .changes
 
     /// The tabs the strip may draw for this workspace, and the one it is showing.
-    var availableInspectorTabs: [InspectorTab] { InspectorTab.available(for: pullRequest) }
+    var availableInspectorTabs: [InspectorTab] {
+        InspectorTab.available(for: pullRequest, showsMail: Mailbox.shared.showsTab)
+    }
 
     private var rememberedHistoryCommit: BranchCommit? {
         guard let lastHistoryCommit, branchCommits.canOffer(.commit(lastHistoryCommit)) else { return nil }

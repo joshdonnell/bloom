@@ -98,6 +98,7 @@ public enum PaneCensusKind: String, Sendable, Equatable, CaseIterable {
     case browser
     case review
     case notes
+    case mail
 
     /// The kind of a tool tab, in these words.
     ///
@@ -110,6 +111,7 @@ public enum PaneCensusKind: String, Sendable, Equatable, CaseIterable {
         case .browser: self = .browser
         case .review: self = .review
         case .notes: self = .notes
+        case .mail: self = .mail
         }
     }
 }

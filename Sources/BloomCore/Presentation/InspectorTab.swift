@@ -10,6 +10,8 @@ public enum InspectorTab: String, Hashable, CaseIterable, Sendable {
     case allFiles = "All files"
     case changes = "Changes"
     case history = "History"
+    /// Mailpit's mailbox. Offered once a Mailpit has answered: see `MailboxPresence`.
+    case mail = "Mail"
     case checks = "Checks"
 
     /// The pane a selection falls back to when the tab it names is not on offer.
@@ -27,8 +29,19 @@ public enum InspectorTab: String, Hashable, CaseIterable, Sendable {
     /// appended at the end arrives without moving the three before it: a pull request landing
     /// mid-session cannot shift a segment out from under a click already on its way to it, and
     /// neither can one going away.
-    public static func available(for pullRequest: PullRequest?) -> [InspectorTab] {
-        allCases.filter { $0 != .checks || hasChecks(pullRequest) }
+    ///
+    /// Mail is the other conditional tab, and it goes **before** Checks rather than after. Checks
+    /// comes and goes with every pull request refresh, so it stays at the very end where it moves
+    /// nothing. Mail arrives once a launch and never leaves (see `MailboxPresence`), so the one
+    /// shift it can cause is Checks moving one segment right, once, usually at launch.
+    public static func available(for pullRequest: PullRequest?, showsMail: Bool = false) -> [InspectorTab] {
+        allCases.filter {
+            switch $0 {
+            case .checks: hasChecks(pullRequest)
+            case .mail: showsMail
+            case .allFiles, .changes, .history: true
+            }
+        }
     }
 
     /// Whether GitHub has reported a check run worth a tab of its own.

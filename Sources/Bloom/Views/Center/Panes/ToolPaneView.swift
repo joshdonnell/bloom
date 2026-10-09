@@ -107,6 +107,13 @@ struct ToolPaneView: View {
                 .id(model.workspace.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+        // No `.id(tab.id)`, for the review's reason: the tab is repointed from message to message
+        // as the inspector's list is walked, and `MailPaneView` keys its own loading on the
+        // message rather than being rebuilt for each one.
+        case .mail:
+            MailPaneView(model: model, tab: tab)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
         }
     }
 

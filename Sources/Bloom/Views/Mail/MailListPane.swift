@@ -1,0 +1,236 @@
+import SwiftUI
+import BloomCore
+
+/// The inspector's Mail tab: Mailpit's mailbox, newest first, searchable, and live.
+///
+/// A click or Return opens the message in the workspace's mail tab in the centre column; the arrow
+/// keys walk the list and carry an open mail tab with them; Delete removes the selected message.
+/// What each of those does to the tab is `MailTab`, and what it does to the list is `Mailbox`.
+///
+/// Built the way `ChangedFileList` is, as a `ScrollView` of rows with `ListKeyboardHost` behind
+/// it, for the reason that list gives: a `List` brings drawing these rows would lose, and the
+/// keyboard is what the host is for.
+struct MailListPane: View {
+    let model: WorkspaceModel
+
+    @Bindable private var mailbox = Mailbox.shared
+    @State private var keyboard = ListKeyboard()
+    @State private var hasKeyboard = false
+    /// Bumped by every click on a row, which is what hands the keyboard to the list.
+    @State private var arm = 0
+    @State private var isConfirmingDeleteAll = false
+
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        VStack(spacing: 0) {
+            InspectorFilterField(
+                query: $mailbox.query,
+                onEscape: { mailbox.query = "" },
+                onReturn: enterList,
+                placeholder: "Search mail"
+            )
+            Hairline()
+
+            if mailbox.hasReadList, mailbox.list.total > 0 {
+                countBand
+                Hairline()
+            }
+
+            if let notice = mailbox.notice {
+                InspectorNotice(notice: notice) { mailbox.notice = nil }
+                Hairline()
+            }
+            if case .disconnected(let failure) = mailbox.connection, !mailbox.list.messages.isEmpty {
+                disconnected(failure)
+                Hairline()
+            }
+
+            ScrollViewReader { proxy in
+                content
+                    .onChange(of: mailbox.selection) { _, id in
+                        guard hasKeyboard, let id else { return }
+                        proxy.scrollTo(id)
+                    }
+            }
+            .listKeyboard(hasKeyboard: $hasKeyboard, armToken: arm, onKey: handle)
+        }
+        .onChange(of: hasKeyboard) { _, focused in
+            if !focused { keyboard.forgetTyping() }
+        }
+        .confirmationDialog(
+            mailbox.list.deleteAllQuestion,
+            isPresented: $isConfirmingDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All", role: .destructive) { mailbox.deleteAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This empties the Mailpit at \(mailbox.address), which every workspace shares. It cannot be undone.")
+        }
+    }
+
+    /// How much mail there is, and the one control that removes all of it.
+    ///
+    /// A labelled button behind a confirmation rather than the bare trash glyph it started as, in
+    /// the toolbar beside the worktree menu. That glyph was reported as unclear, and it deleted the
+    /// whole mailbox on one click: in a row of icons about the worktree it read as something about
+    /// files. Here it sits next to the count it would clear, and says what it does.
+    private var countBand: some View {
+        HStack(spacing: InspectorLayout.gap) {
+            Text(mailbox.list.countLine)
+                .font(Typo.caption)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button("Delete All…") { isConfirmingDeleteAll = true }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .foregroundStyle(Palette.negative)
+                .help("Delete every message in Mailpit, after asking")
+        }
+        .padding(.horizontal, InspectorLayout.inset)
+        .frame(height: InspectorLayout.barHeight)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        let list = mailbox.list
+        if case .disconnected(.unauthorised) = mailbox.connection {
+            EmptyStateView(
+                glyph: "lock",
+                title: "Mailpit wants a password",
+                message: MailpitFailure.unauthorised.message,
+                actionTitle: "Mail Settings",
+                action: showSettings
+            )
+        } else if list.messages.isEmpty, !mailbox.hasReadList {
+            if case .disconnected(let failure) = mailbox.connection {
+                EmptyStateView(
+                    glyph: "envelope.badge.shield.half.filled",
+                    title: "Can't reach Mailpit",
+                    message: "\(failure.message) Bloom is looking for it at \(mailbox.address) and will keep trying.",
+                    actionTitle: "Try Again",
+                    action: mailbox.retry
+                )
+            } else {
+                LoadingView("Reading the mailbox")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else if list.messages.isEmpty {
+            if list.query.isEmpty {
+                EmptyStateView(
+                    glyph: "tray",
+                    title: "No mail",
+                    message: "Mail your app sends to the Mailpit at \(mailbox.address) appears here as it arrives."
+                )
+            } else {
+                EmptyStateView(
+                    glyph: "magnifyingglass",
+                    title: "No mail matches",
+                    message: "Nothing in Mailpit matches \(list.query)."
+                )
+            }
+        } else {
+            rows(list)
+        }
+    }
+
+    private func rows(_ list: MailboxList) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(list.messages) { summary in
+                    HoverRow(isSelected: mailbox.selection == summary.id, isFocused: hasKeyboard) {
+                        MailRow(summary: summary)
+                    }
+                    .padding(.horizontal, InspectorLayout.tight)
+                    .id(summary.id)
+                    .onTapGesture { activate(summary.id) }
+                    .contextMenu {
+                        Button("Open") { activate(summary.id) }
+                        Divider()
+                        Button("Delete", role: .destructive) { MailTab.delete(summary.id, in: model) }
+                    }
+                    .onAppear {
+                        if summary.id == list.messages.last?.id { mailbox.loadMore() }
+                    }
+                }
+                if mailbox.isLoadingPage {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Metrics.spacing)
+                }
+            }
+            .padding(.vertical, InspectorLayout.tight)
+        }
+    }
+
+    /// The band over a list that is no longer live: the rows are what Mailpit last said, and the
+    /// band says so rather than letting them pass for current.
+    private func disconnected(_ failure: MailpitFailure) -> some View {
+        HStack(spacing: InspectorLayout.gap) {
+            ProgressView()
+                .controlSize(.mini)
+            Text("Disconnected from Mailpit, retrying")
+                .font(Typo.caption)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+                .help(failure.message)
+            Spacer(minLength: 0)
+            Button("Try Again", action: mailbox.retry)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, InspectorLayout.inset)
+        .frame(height: InspectorLayout.barHeight)
+    }
+
+    // MARK: - Doing
+
+    private func activate(_ id: MailpitMessageID) {
+        arm += 1
+        MailTab.open(id, in: model)
+    }
+
+    /// Return in the search field: the keyboard goes to the list, on the first row if nothing is
+    /// selected yet.
+    private func enterList() {
+        if mailbox.selection == nil, let first = mailbox.list.messages.first?.id {
+            MailTab.follow(first, in: model)
+        }
+        arm += 1
+    }
+
+    private func showSettings() {
+        SettingsTabRequest.post(.mail)
+        openSettings()
+    }
+
+    private func handle(key: ListKey) -> Bool {
+        let messages = mailbox.list.messages
+        let index = mailbox.selection.flatMap { id in messages.firstIndex { $0.id == id } }
+
+        // Delete and Backspace arrive as characters, and type-select would otherwise take them as
+        // the start of a word.
+        if case .character(let character) = key, character == "\u{7F}" || character == "\u{08}" {
+            guard let selection = mailbox.selection else { return false }
+            MailTab.delete(selection, in: model)
+            return true
+        }
+
+        switch keyboard.outcome(for: key, titles: messages.map(\.subject), current: index) {
+        case .move(let row):
+            MailTab.follow(messages[row].id, in: model)
+            return true
+        case .activate:
+            guard let selection = mailbox.selection else { return false }
+            MailTab.open(selection, in: model)
+            return true
+        case .handled:
+            return true
+        case .ignored:
+            return false
+        }
+    }
+}

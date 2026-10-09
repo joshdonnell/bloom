@@ -29,6 +29,7 @@ public enum PaneGlyph {
     public static let browser = "globe"
     public static let review = "doc.text"
     public static let notes = "note.text"
+    public static let mail = "envelope"
 
     /// What one chat tab wears.
     ///

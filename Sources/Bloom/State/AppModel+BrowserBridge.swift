@@ -203,6 +203,13 @@ extension AppModel {
         let session = CenterTabStore.shared.browser(for: tab, root: model.workspace.path)
         session.prepareForAgent()
         if command.readsPage { await session.settle() }
+        // After settling rather than before, so a tab that arrived on one of 1Password's own pages
+        // while this waited is refused as well.
+        if let refusal = BrowserPasswordManager.agentRefusal(
+            address: session.displayAddress, browser: chosen.number
+        ) {
+            return .refused(refusal)
+        }
         // Read again, because the census above was taken before the page had loaded, and a
         // failure that arrived while settling is the one thing a screenshot must not miss.
         let current = report(tab, number: chosen.number, name: chosen.name)

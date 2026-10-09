@@ -38,9 +38,16 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
     /// key a second time.
     private(set) var isEnabled: Bool
 
+    /// Changed only through `update`, which is what keeps every waiting tab's message in step
+    /// with it.
     private var lifecycle = BrowserPasswordManager.Switch()
 
     var status: BrowserPasswordManager.Status { lifecycle.status }
+
+    /// What a tab waiting on the extension says, as of now. See `BrowserPasswordManager.waitingPage`.
+    var waitingPage: BrowserLoadFailure? {
+        BrowserPasswordManager.waitingPage(status: status, isOn: isEnabled)
+    }
 
     /// Moved whenever the extension changes its toolbar button, so a toolbar reading `action(for:)`
     /// is redrawn with the new icon or badge. `WKWebExtension.Action` is not observable itself.
@@ -112,33 +119,50 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
 
     private func start() {
         stop()
-        let attempt = lifecycle.turnOn()
+        let attempt = update { $0.turnOn() }
         loading = Task { [weak self] in
             let lookup = await BrowserPasswordManager.locate()
-            guard let self, let found = self.lifecycle.looked(lookup, attempt: attempt) else { return }
+            guard let self, let found = self.update({ $0.looked(lookup, attempt: attempt) }) else { return }
             await self.load(found, attempt: attempt)
         }
     }
 
     /// Unloads the extension from every tab. A tab that was showing one of its own pages is left
     /// on a configuration that serves nothing, so it says why and waits for the switch.
+    ///
+    /// The tabs are told whether or not anything was loaded. Switching off while still looking
+    /// has no context to unload, and returning early there left a tab that had been waiting since
+    /// launch saying "Waiting for 1Password" with the switch off.
     private func stop() {
         loading?.cancel()
         loading = nil
-        lifecycle.turnOff()
-        guard let context else { return }
-        try? controller.unload(context)
-        self.context = nil
-        actionRevision += 1
-        for tab in liveTabs {
-            tab.session?.extensionWentAway()
+        if let context {
+            try? controller.unload(context)
+            self.context = nil
+            actionRevision += 1
         }
+        for session in liveTabs.compactMap(\.session) where session.pauseForExtension() {
+            enqueue(session)
+        }
+        update { $0.turnOff() }
+    }
+
+    /// The one way the lifecycle changes, so that every tab waiting on the extension is told what
+    /// it now says in the same breath.
+    @discardableResult
+    private func update<Result>(_ change: (inout BrowserPasswordManager.Switch) -> Result) -> Result {
+        let result = change(&lifecycle)
+        let page = waitingPage
+        for session in waiting.compactMap(\.session) {
+            session.showWaiting(page)
+        }
+        return result
     }
 
     private func load(_ found: BrowserPasswordManager.Installed, attempt: Int) async {
         let url = URL(filePath: found.path, directoryHint: .isDirectory)
         guard let bundle = Bundle(url: url) else {
-            lifecycle.failed("its bundle at \(found.path) could not be opened.", attempt: attempt)
+            update { $0.failed("its bundle at \(found.path) could not be opened.", attempt: attempt) }
             return
         }
         do {
@@ -159,13 +183,13 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
             }
             try controller.load(context)
             self.context = context
-            lifecycle.loaded(version: webExtension.displayVersion ?? found.version, attempt: attempt)
+            update { $0.loaded(version: webExtension.displayVersion ?? found.version, attempt: attempt) }
             for tab in liveTabs { controller.didOpenTab(tab) }
             if let activeTab { controller.didActivateTab(activeTab, previousActiveTab: nil) }
             actionRevision += 1
             releaseWaiting(with: context)
         } catch {
-            lifecycle.failed(error.localizedDescription, attempt: attempt)
+            update { $0.failed(error.localizedDescription, attempt: attempt) }
         }
     }
 
@@ -185,11 +209,24 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         return context.webViewConfiguration
     }
 
-    /// A session showing one of the extension's pages that has to wait for it to load.
+    /// A session showing one of the extension's pages that has to wait for it to load. One that
+    /// asks after the extension has already loaded is given its configuration straight away.
     func waitForExtension(_ session: BrowserSession) {
+        if let context, context.isLoaded, let configuration = context.webViewConfiguration {
+            session.adoptExtension(configuration: configuration)
+            return
+        }
+        enqueue(session)
+        startIfNeeded()
+    }
+
+    /// Onto the waiting list, without starting anything. `stop` uses this rather than
+    /// `waitForExtension`, because `start` calls `stop` first, and a tab asking to be started from
+    /// inside it would start again from inside itself.
+    private func enqueue(_ session: BrowserSession) {
         waiting.removeAll { $0.session == nil || $0.session === session }
         waiting.append(WeakSession(session: session))
-        startIfNeeded()
+        session.showWaiting(waitingPage)
     }
 
     /// Nil from `webViewConfiguration` is a context that is not loaded, which this is only ever

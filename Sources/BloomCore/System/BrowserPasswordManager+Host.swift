@@ -38,21 +38,52 @@ extension BrowserPasswordManager {
     }
 
     /// What a tab showing one of 1Password's own pages says while it cannot show it, because the
-    /// extension that serves the page is not loaded. `isOn` is the switch in Settings.
-    public static func waitingPage(isOn: Bool) -> BrowserLoadFailure {
-        if isOn {
-            return BrowserLoadFailure(
-                title: "Waiting for 1Password",
-                message: "This is one of 1Password's own pages. It opens by itself once the "
-                    + "extension has loaded.",
-                namesTheAddress: false
+    /// extension that serves the page is not loaded. Nil once it is, which is the tab's cue to
+    /// show the page itself.
+    ///
+    /// **From the status as it is now, and asked again every time the status moves.** It was set
+    /// once, when the tab began to wait, so a tab went on promising that the page would open by
+    /// itself after the lookup had already found 1Password missing, and went on saying it was
+    /// waiting after the switch had been turned off.
+    public static func waitingPage(status: Status, isOn: Bool) -> BrowserLoadFailure? {
+        guard isOn else {
+            return page(
+                "1Password is switched off",
+                "This is one of 1Password's own pages. Switch 1Password on in Settings, under "
+                    + "Browser, and it opens again by itself."
             )
         }
-        return BrowserLoadFailure(
-            title: "1Password is switched off",
-            message: "This is one of 1Password's own pages. Switch 1Password on in Settings, "
-                + "under Browser, and it opens again by itself.",
-            namesTheAddress: false
-        )
+        switch status {
+        case .off, .looking:
+            return page(
+                "Waiting for 1Password",
+                "This is one of 1Password's own pages. It opens by itself once the extension has "
+                    + "loaded."
+            )
+        case .notInstalled:
+            return page(
+                "1Password for Safari is not installed",
+                "This is one of 1Password's own pages, and it needs the extension. Install "
+                    + "1Password for Safari from the App Store, then switch 1Password off and on "
+                    + "again in Settings, under Browser."
+            )
+        case .cannotLook(let reason):
+            return page(
+                "Bloom could not look for 1Password",
+                "macOS could not be asked which Safari extensions are installed (\(reason)). "
+                    + "Switch 1Password off and on again in Settings, under Browser."
+            )
+        case .failed(let reason):
+            return page(
+                "1Password would not load",
+                "1Password for Safari was found but would not load: \(reason)"
+            )
+        case .ready:
+            return nil
+        }
+    }
+
+    private static func page(_ title: String, _ message: String) -> BrowserLoadFailure {
+        BrowserLoadFailure(title: title, message: message, namesTheAddress: false)
     }
 }

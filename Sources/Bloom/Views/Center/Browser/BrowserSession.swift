@@ -168,7 +168,11 @@ final class BrowserSession {
         // Shown in the address field from the first frame, before anything has been fetched.
         currentURL = BrowserAddress.url(from: url)
         page = BrowserTabTitle.BrowserPage(address: displayAddress)
-        if usesExtensions { joinExtension() }
+        if usesExtensions {
+            let tab = BrowserExtensionTab(session: self)
+            extensionTab = tab
+            BrowserExtensionHost.shared.didOpen(tab)
+        }
         if extensionConfiguration == nil, let address = currentURL,
            BrowserPasswordManager.isExtensionPage(address) {
             waitForExtension()
@@ -258,24 +262,45 @@ final class BrowserSession {
 
     private func waitForExtension() {
         awaitsExtension = true
-        failure = BrowserPasswordManager.waitingPage(isOn: BrowserExtensionHost.shared.isEnabled)
+        showWaiting(BrowserExtensionHost.shared.waitingPage)
         BrowserExtensionHost.shared.waitForExtension(self)
     }
 
-    /// The extension was switched off. A tab on one of its pages is left on a configuration that
-    /// serves nothing, so it says why and waits to be switched back on.
-    func extensionWentAway() {
-        guard let address = currentURL, BrowserPasswordManager.isExtensionPage(address) else { return }
+    /// What the tab says while it waits, which the host sends again every time the extension's
+    /// status moves, so it never goes on promising something that has stopped being true.
+    func showWaiting(_ page: BrowserLoadFailure?) {
+        guard awaitsExtension, let page else { return }
+        if failure != page { failure = page }
+    }
+
+    /// The extension is being unloaded. A tab on one of its pages is left on a configuration that
+    /// serves nothing, so it stops and waits, and answers whether it did. The host puts it on the
+    /// waiting list itself and says what it shows, because this is called from inside `stop`.
+    func pauseForExtension() -> Bool {
+        guard let address = currentURL, BrowserPasswordManager.isExtensionPage(address) else {
+            return false
+        }
         webView.stopLoading()
-        waitForExtension()
+        awaitsExtension = true
+        return true
     }
 
     /// The extension has loaded, and this tab was waiting for it. The web view is replaced by one
     /// made with the extension's configuration, and the page this tab was on is loaded into it.
+    ///
+    /// **The tab is registered with the extension afresh, around the new web view.** Its old
+    /// registration, if it had one, was made while it held the old web view, and a tab restored
+    /// with the switch off had none at all, which left the page loaded with no 1Password button
+    /// and invisible to `tabs.query`.
     func adoptExtension(configuration: WKWebViewConfiguration) {
         guard awaitsExtension, let address = currentURL else { return }
         awaitsExtension = false
-        let usesExtensions = BrowserExtensionHost.shared.attach(to: configuration)
+        let host = BrowserExtensionHost.shared
+        if let extensionTab {
+            host.didClose(extensionTab)
+            self.extensionTab = nil
+        }
+        let usesExtensions = host.attach(to: configuration)
         let listening = consoleLog.isListening
         stopListeningToConsole()
         consoleLog.isListening = false
@@ -288,23 +313,15 @@ final class BrowserSession {
         view.underPageBackgroundColor = old.underPageBackgroundColor
         webView = view
         install(view)
-        // After the swap, so the extension is introduced to the web view it will be asked about.
-        if usesExtensions { joinExtension() }
+        if usesExtensions {
+            let tab = BrowserExtensionTab(session: self)
+            extensionTab = tab
+            host.didOpen(tab)
+        }
         if listening { listenToConsole() }
         failure = nil
         load(address.absoluteString)
-    }
-
-    /// Makes this tab one the extension can see, once.
-    ///
-    /// From `adoptExtension` as well as from `init`, because a tab restored on one of 1Password's
-    /// pages while the switch was off was made with no extension tab, and once switched on its page
-    /// came back with no button over it and was never reported to the extension.
-    private func joinExtension() {
-        guard extensionTab == nil else { return }
-        let tab = BrowserExtensionTab(session: self)
-        extensionTab = tab
-        BrowserExtensionHost.shared.didOpen(tab)
+        if view.window != nil { becomeActiveTab() }
     }
 
     /// The reader put this tab on screen or clicked in it, so it is the one 1Password fills. A

@@ -241,9 +241,33 @@ struct BrowserPasswordManagerTests {
         #expect(BrowserPasswordManager.popupAnchor(buttonIsInWindow: false, pageIsInWindow: false) == Anchor.nowhere)
     }
 
-    @Test("A page waiting on the extension says whether it is waiting or switched off")
+    @Test("A page waiting on the extension says what the extension is doing now")
     func waitingPages() {
-        #expect(BrowserPasswordManager.waitingPage(isOn: true).title == "Waiting for 1Password")
-        #expect(BrowserPasswordManager.waitingPage(isOn: false).title == "1Password is switched off")
+        func title(_ status: BrowserPasswordManager.Status, isOn: Bool = true) -> String? {
+            BrowserPasswordManager.waitingPage(status: status, isOn: isOn)?.title
+        }
+        #expect(title(.looking) == "Waiting for 1Password")
+        #expect(title(.off) == "Waiting for 1Password")
+        #expect(title(.notInstalled) == "1Password for Safari is not installed")
+        #expect(title(.cannotLook("timed out")) == "Bloom could not look for 1Password")
+        #expect(title(.failed("bad manifest")) == "1Password would not load")
+        #expect(title(.ready(version: "8")) == nil)
+    }
+
+    @Test("Switched off wins over whatever the extension was doing")
+    func switchedOffWins() {
+        for status: BrowserPasswordManager.Status in [.off, .looking, .notInstalled, .ready(version: "8")] {
+            #expect(BrowserPasswordManager.waitingPage(status: status, isOn: false)?.title == "1Password is switched off")
+        }
+    }
+
+    @Test("Only a page that is still on its way promises to open by itself")
+    func onlyAWaitPromises() {
+        let promise = "opens by itself once the extension has loaded"
+        let failures: [BrowserPasswordManager.Status] = [.notInstalled, .cannotLook("x"), .failed("y")]
+        for status in failures {
+            #expect(BrowserPasswordManager.waitingPage(status: status, isOn: true)?.message.contains(promise) == false)
+        }
+        #expect(BrowserPasswordManager.waitingPage(status: .looking, isOn: true)?.message.contains(promise) == true)
     }
 }

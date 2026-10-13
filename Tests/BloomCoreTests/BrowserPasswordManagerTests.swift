@@ -332,4 +332,36 @@ struct BrowserPasswordManagerTests {
         }
         #expect(BrowserPasswordManager.waitingPage(status: .looking, isOn: true)?.message.contains(promise) == true)
     }
+
+    // MARK: - Crossing between the extension's pages and the web
+
+    @Test("Sign in leaves the extension's page for an ordinary web view, and a tab already ordinary stays")
+    func signingInLeavesTheExtensionsPage() throws {
+        typealias Manager = BrowserPasswordManager
+        let signIn = try #require(URL(string: "https://start.1password.com/signin/?auth-only=1"))
+        #expect(Manager.crossing(to: signIn, showsExtensionPages: true, requestedByPage: true) == .outOfExtension)
+        #expect(Manager.crossing(to: signIn, showsExtensionPages: true, requestedByPage: false) == .outOfExtension)
+        #expect(Manager.crossing(to: signIn, showsExtensionPages: false, requestedByPage: true) == .stay)
+    }
+
+    @Test("Moving between the extension's own pages needs no new web view")
+    func extensionPagesStayPut() throws {
+        let ready = try #require(URL(string: BrowserPasswordManager.extensionBaseURL.absoluteString + "app/app.html#/page/ready"))
+        #expect(BrowserPasswordManager.crossing(to: ready, showsExtensionPages: true, requestedByPage: true) == .stay)
+    }
+
+    @Test("Only Bloom or the extension takes a tab onto the extension's pages, never a page")
+    func aPageCannotOpenTheExtensionsPages() throws {
+        let ready = try #require(URL(string: BrowserPasswordManager.extensionBaseURL.absoluteString + "app/app.html#/page/ready"))
+        #expect(BrowserPasswordManager.crossing(to: ready, showsExtensionPages: false, requestedByPage: false) == .intoExtension)
+        #expect(BrowserPasswordManager.crossing(to: ready, showsExtensionPages: false, requestedByPage: true) == .stay)
+    }
+
+    @Test("Out of the extension only to an address Bloom shows")
+    func onlyTheWebIsLeftFor() throws {
+        for address in ["file:///etc/hosts", "about:blank", "webkit-extension://somebody-else/app.html"] {
+            let url = try #require(URL(string: address))
+            #expect(BrowserPasswordManager.crossing(to: url, showsExtensionPages: true, requestedByPage: true) == .stay)
+        }
+    }
 }

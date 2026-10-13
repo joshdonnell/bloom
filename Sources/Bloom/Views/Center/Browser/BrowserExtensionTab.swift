@@ -65,7 +65,10 @@ final class BrowserExtensionTab: NSObject, WKWebExtensionTab {
     func loadURL(
         _ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void
     ) {
-        session?.webView.load(URLRequest(url: url))
+        // Through the session rather than straight to the web view, because the extension sends
+        // tabs between its own pages and the web, which takes a web view of the other kind. See
+        // `BrowserPasswordManager.crossing`.
+        session?.load(url.absoluteString)
         completionHandler(nil)
     }
 

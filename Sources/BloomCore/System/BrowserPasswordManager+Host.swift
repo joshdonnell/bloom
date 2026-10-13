@@ -87,3 +87,45 @@ extension BrowserPasswordManager {
         BrowserLoadFailure(title: title, message: message, namesTheAddress: false)
     }
 }
+
+/// Moving a tab between 1Password's own pages and the web.
+///
+/// **A web view made for one of the extension's pages cannot leave them, and that was why Sign
+/// in did nothing.** 1Password's welcome page signs in by setting `window.location.href` to
+/// `https://start.1password.com/signin/`. WebKit asked the navigation delegate, was told yes, and
+/// then never started the navigation: no provisional load, no failure, the page just stayed put.
+/// Measured on macOS 27 with a test extension doing exactly that, in a web view made from
+/// `WKWebExtensionContext.webViewConfiguration` the way Bloom makes one, against the same address
+/// loading normally in an ordinary web view. The other direction is the -1008 the head of
+/// `BrowserExtensionHost` describes. Safari moves the tab to a web view of the right kind, so this
+/// says when Bloom has to do the same.
+extension BrowserPasswordManager {
+    public enum Crossing: Equatable, Sendable {
+        /// The web view the tab has can go there itself.
+        case stay
+        /// Onto one of the extension's pages from an ordinary web view: a web view made with the
+        /// extension's configuration has to take over.
+        case intoExtension
+        /// Out to the web from one of the extension's pages: an ordinary web view has to take over.
+        case outOfExtension
+    }
+
+    /// What a tab has to do to go to `url`, given whether its web view was made for the extension's
+    /// pages and whether the page on screen asked for the navigation rather than Bloom or the
+    /// extension.
+    ///
+    /// **A page never gets a tab onto the extension's pages.** None of 1Password's pages are
+    /// listed in its `web_accessible_resources`, so a site linking to one is refused in every
+    /// browser, and swapping in a web view that could load it would be Bloom undoing that. Only
+    /// the address bar and the extension's own `tabs.update` cross that way. Out to the web, only
+    /// an address Bloom shows at all, which is http and https.
+    public static func crossing(
+        to url: URL, showsExtensionPages: Bool, requestedByPage: Bool
+    ) -> Crossing {
+        let isExtension = isExtensionPage(url)
+        if showsExtensionPages {
+            return !isExtension && BrowserAddress.shows(url) ? .outOfExtension : .stay
+        }
+        return isExtension && !requestedByPage ? .intoExtension : .stay
+    }
+}

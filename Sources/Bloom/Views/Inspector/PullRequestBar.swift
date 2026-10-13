@@ -38,7 +38,7 @@ struct PullRequestBar: View {
     @State private var isVisible = false
 
     /// Where an answer goes. Set here, drawn in the column: see the note on the type.
-    private var report: PullRequestNotice? {
+    private var report: InspectorNoticeContent? {
         get { model.pullRequestNotice }
         nonmutating set { model.pullRequestNotice = newValue }
     }
@@ -178,7 +178,7 @@ struct PullRequestBar: View {
         Task {
             defer { isWorking = false }
             if let refusal = await model.requestPullRequest() {
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .info, title: "Nothing was sent", message: refusal
                 )
             }
@@ -195,7 +195,7 @@ struct PullRequestBar: View {
             do {
                 try await model.markReadyForReview(pullRequest)
             } catch {
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .failure, title: "Could not mark ready for review",
                     message: String(describing: error)
                 )
@@ -215,7 +215,7 @@ struct PullRequestBar: View {
         Task {
             defer { isWorking = false }
             if let refusal = await model.requestPush() {
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .info, title: "Nothing was sent", message: refusal
                 )
             }
@@ -240,7 +240,7 @@ struct PullRequestBar: View {
         Task {
             defer { isWorking = false }
             if let refusal = await model.requestFixConflicts(pullRequest) {
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .info, title: "Nothing was sent", message: refusal
                 )
             }
@@ -267,11 +267,11 @@ struct PullRequestBar: View {
             case .continued:
                 break
             case .refused(let refusal):
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .info, title: "Nothing was changed", message: refusal.sentence
                 )
             case .failed(let reason):
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .failure,
                     title: "Could not continue",
                     // The reassurance used to be appended here, which read as a contradiction
@@ -323,7 +323,7 @@ struct PullRequestBar: View {
         Task {
             defer { isWorking = false }
             if let refusal = await model.requestMerge(pullRequest, method: method) {
-                report = PullRequestNotice(
+                report = InspectorNoticeContent(
                     tone: .info, title: "Nothing was sent", message: refusal
                 )
             }

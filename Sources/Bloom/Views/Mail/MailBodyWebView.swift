@@ -55,18 +55,32 @@ struct MailBodyWebView: NSViewRepresentable {
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction
         ) async -> WKNavigationActionPolicy {
-            // The body itself loads, and so do the frames and images it pulls in. Nothing else
-            // may move this view: a form in an email posting from here would put a page from the
-            // reader's app where the message was, under headers that no longer describe it.
+            // The body itself loads, and so does a frame inside it that Mailpit serves, or a blank
+            // one. Nothing else may move this view: a form in an email posting from here would put
+            // a page from the reader's app where the message was, under headers that no longer
+            // describe it. Images are not navigations and never reach this.
+            //
+            // **A frame from anywhere else is refused**, though JavaScript is off and nothing is
+            // stored: an `<iframe>` pointing at the web is a page fetched because an email said
+            // so, and mail clients do not load those either, so the preview should not.
+            guard let url = navigationAction.request.url else { return .cancel }
             switch navigationAction.navigationType {
-            case .other where navigationAction.request.url == loaded || navigationAction.targetFrame?.isMainFrame == false:
-                return .allow
             case .linkActivated:
-                if let url = navigationAction.request.url, BrowserTab.canOpen(url) { onLink(url) }
+                if BrowserTab.canOpen(url) { onLink(url) }
                 return .cancel
+            case .other where url == loaded:
+                return .allow
+            case .other where navigationAction.targetFrame?.isMainFrame == false:
+                return url.scheme == "about" || isMailpit(url) ? .allow : .cancel
             default:
                 return .cancel
             }
+        }
+
+        /// The same scheme, host and port as the body, which is Mailpit.
+        private func isMailpit(_ url: URL) -> Bool {
+            guard let loaded else { return false }
+            return url.scheme == loaded.scheme && url.host() == loaded.host() && url.port == loaded.port
         }
     }
 }

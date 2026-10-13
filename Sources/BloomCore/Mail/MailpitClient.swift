@@ -29,7 +29,8 @@ public enum MailpitFailure: Error, Equatable, Sendable {
 /// Mailpit's v1 API, as much of it as the mail tab and the inspector use.
 ///
 /// Requests are made here, in the core, and sent through an injected transport, so a test can
-/// stand in for Mailpit and pin the method, the path and the body of every call. The live transport is an ephemeral session with no cache and no cookies.
+/// stand in for Mailpit and pin the method, the path and the body of every call. The live
+/// transport is an ephemeral session with no cache and no cookies.
 ///
 /// **`delete` with no ids does nothing, deliberately, and that is the most important line here.**
 /// Mailpit's `DELETE /api/v1/messages` reads an empty list of ids as "delete every message", so an
@@ -90,8 +91,15 @@ public struct MailpitClient: Sendable {
 
     // MARK: - Reading
 
+    /// Whether a Mailpit is at the address at all.
+    ///
+    /// A 404 here is not a deleted message, which is what `notFound` says everywhere else: it is a
+    /// server with no such route, a dev server on 8025 or an old MailHog, and Settings would have
+    /// told the reader "The message has been deleted" about an address. It is `undecodable`, which
+    /// says what it is: something answered that is not Mailpit.
     public func info() async -> Result<MailpitInfo, MailpitFailure> {
         await decode(MailpitInfo.self, from: request("GET", url("api/v1/info")))
+            .mapError { $0 == .notFound ? .undecodable : $0 }
     }
 
     /// One page of the list. An empty query is the whole mailbox, newest first; anything else goes

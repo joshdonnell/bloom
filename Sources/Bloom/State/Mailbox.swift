@@ -8,8 +8,9 @@ import BloomCore
 /// workspace's Mail tab is a window onto the same mailbox. A per-workspace copy would be several
 /// websockets to one server, each holding its own idea of which messages are read.
 ///
-/// What changes the list is `MailboxList` and when the tab exists is `MailboxPresence`, both in the
-/// core with their tests. This is the part neither can be: the requests, the socket, the timers.
+/// What changes the list is `MailboxList`, and what the loop decides at each step (whether the tab
+/// exists, what the connection is, how long to wait) is `MailboxLink`, both in the core with their
+/// tests. This is the part neither can be: the requests, the socket, the timers.
 ///
 /// The loop that finds Mailpit and keeps the websocket open is one task, `loop`. Until
 /// Mailpit first answers it asks every thirty seconds, and whenever Bloom comes to the front; once
@@ -20,19 +21,8 @@ import BloomCore
 final class Mailbox {
     static let shared = Mailbox()
 
-    enum Connection: Equatable {
-        /// Not looking: switched off, or not started.
-        case idle
-        case connecting
-        /// The websocket is open and the list is following it.
-        case live
-        /// The last attempt failed, and another is on its way.
-        case disconnected(MailpitFailure)
-    }
-
-    private(set) var presence: MailboxPresence
+    private(set) var link: MailboxLink
     private(set) var list = MailboxList()
-    private(set) var connection: Connection = .idle
     /// Whether the list has been read at all since the connection came up, which is the difference
     /// between "no mail" and "not asked yet".
     private(set) var hasReadList = false
@@ -42,13 +32,16 @@ final class Mailbox {
     private(set) var client: MailpitClient?
     /// The row the inspector has selected. One for the app, like the list it is a row of.
     private(set) var selection: MailpitMessageID?
-    /// Moved by every message that leaves the mailbox, whoever removed it. A mail tab watches this
-    /// and asks again, so a message deleted from Mailpit's own UI does not stay on screen looking
-    /// as if it were still there.
+    /// Moved by every message Mailpit reports leaving the mailbox, whoever removed it. A mail tab
+    /// watches this and asks again, so a message deleted from Mailpit's own UI does not stay on
+    /// screen looking as if it were still there.
+    ///
+    /// Moved by the websocket's frames only, never by a delete Bloom asked for as well: the frame
+    /// for that delete follows a moment later, and moving it twice made every open mail tab fetch
+    /// its message twice per delete.
     private(set) var removals = 0
     /// Something the reader asked for that did not happen, said once under the search field.
-    /// `PullRequestNotice` is the inspector's one notice shape, whatever it is about.
-    var notice: PullRequestNotice?
+    var notice: InspectorNoticeContent?
 
     /// The search field. Debounced into a new first page: see `scheduleSearch`.
     var query = "" {
@@ -58,7 +51,8 @@ final class Mailbox {
         }
     }
 
-    var showsTab: Bool { presence.showsTab }
+    var connection: MailboxConnection { link.connection }
+    var showsTab: Bool { link.presence.showsTab }
 
     @ObservationIgnored private var started = false
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -66,7 +60,7 @@ final class Mailbox {
     @ObservationIgnored private var settingsChange: Task<Void, Never>?
 
     private init() {
-        presence = MailboxPresence(isEnabled: Self.storedEnabled)
+        link = MailboxLink(isEnabled: Self.storedEnabled)
     }
 
     // MARK: - Starting
@@ -84,22 +78,41 @@ final class Mailbox {
         ) { _ in
             MainActor.assumeIsolated { Mailbox.shared.lookAgainIfDown() }
         }
+        // Settings > Mail writes the two defaults, and this is the one place that hears them,
+        // rather than a pair of `onChange` handlers in the view that every other place editing
+        // them would have to repeat.
+        // swiftlint:disable:next discarded_notification_center_observer
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { Mailbox.shared.settingsChanged() }
+        }
+        // Read again rather than trusted from `init`: a view asking whether the tab shows can
+        // build this model before bootstrap starts it, and Settings may have moved in between.
+        link.reconfigure(isEnabled: Self.storedEnabled)
         restart()
     }
 
     /// Settings moved. Debounced, because the address field reports every keystroke and each one
     /// would otherwise knock on a half typed address.
-    func settingsChanged() {
+    ///
+    /// Compared before anything is scheduled, because the notification behind this fires for every
+    /// default the app writes, not only these two. And compared again after the wait: an address
+    /// typed back to what it was, or a switch flipped and flipped back inside it, is no change, and
+    /// restarting for it would hide the tab until Mailpit answered again.
+    private func settingsChanged() {
+        guard Self.storedEnabled != link.presence.isEnabled || Self.storedAddress != address else {
+            settingsChange?.cancel()
+            settingsChange = nil
+            return
+        }
         settingsChange?.cancel()
         settingsChange = Task {
             try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            // An address typed back to what it was, or a switch flipped and flipped back inside
-            // the debounce, is no change, and restarting for it would hide the tab until Mailpit
-            // answered again.
             let isEnabled = Self.storedEnabled
-            guard isEnabled != presence.isEnabled || Self.storedAddress != address else { return }
-            presence.reconfigure(isEnabled: isEnabled)
+            guard !Task.isCancelled,
+                  isEnabled != link.presence.isEnabled || Self.storedAddress != address else { return }
+            link.reconfigure(isEnabled: isEnabled)
             restart()
         }
     }
@@ -110,7 +123,7 @@ final class Mailbox {
     }
 
     private func lookAgainIfDown() {
-        guard presence.isEnabled, connection != .live, connection != .connecting else { return }
+        guard link.looksAgainOnActivation else { return }
         restart()
     }
 
@@ -118,16 +131,19 @@ final class Mailbox {
         loop?.cancel()
         address = Self.storedAddress
         let previous = client?.base
-        client = MailpitSettings.base(from: address).map { MailpitClient(base: $0) }
-        guard presence.isEnabled, let client else {
-            connection = .idle
+        let client = MailpitSettings.base(from: address).map { MailpitClient(base: $0) }
+        // Off means off: with no client an open mail tab stops fetching too, rather than going on
+        // reading a Mailpit the inspector no longer shows.
+        self.client = link.presence.isEnabled ? client : nil
+        link.startLooking()
+        guard let client = self.client else {
+            link.stopLooking()
             forgetMailbox()
             return
         }
         // Another Mailpit's mail is not this one's, and leaving it up until the new one answers
         // would show rows that a click on would fetch from the wrong server.
         if client.base != previous { forgetMailbox() }
-        connection = .connecting
         loop = Task { await run(client) }
     }
 
@@ -139,8 +155,9 @@ final class Mailbox {
 
     // MARK: - The loop
 
+    /// Looks, listens while Mailpit answers, waits, and looks again. Every decision between those
+    /// steps is `MailboxLink`'s.
     private func run(_ client: MailpitClient) async {
-        var failures = 0
         while !Task.isCancelled {
             let answer = await client.info()
             // **Cancelled while the request was out means a restart has already begun**, for a new
@@ -148,30 +165,15 @@ final class Mailbox {
             // new state: it marked an address that had never answered as answered, so the tab
             // appeared for a Mailpit nobody had found, and set the connection beside it.
             guard !Task.isCancelled else { return }
-            switch answer {
-            case .success:
-                presence.answered()
-                failures = 0
+            let pause: Duration
+            switch link.probed(answer) {
+            case .listen:
                 let dropped = await listen(client)
                 guard !Task.isCancelled else { return }
-                failures = 1
-                connection = .disconnected(dropped)
-
-            // A password prompt is still a Mailpit answering, and the tab is where the reader is
-            // told what it wants. Anything else that is not Mailpit is not counted as one.
-            case .failure(.unauthorised):
-                presence.answered()
-                failures += 1
-                connection = .disconnected(.unauthorised)
-
-            case .failure(let failure):
-                failures += 1
-                connection = .disconnected(failure)
+                pause = link.dropped(dropped)
+            case .wait(let wait):
+                pause = wait
             }
-
-            let pause = presence.isSearching
-                ? MailboxPresence.searchInterval
-                : MailboxPresence.reconnectDelay(afterFailures: failures)
             do {
                 try await Task.sleep(for: pause)
             } catch {
@@ -199,7 +201,7 @@ final class Mailbox {
         // `.live` regardless left the pane on "Reading the mailbox" for good, with nothing retrying.
         if let failure = await reloadFirstPage(from: client) { return failure }
         guard !Task.isCancelled else { return .unreachable }
-        connection = .live
+        link.listening()
 
         return await withTaskCancellationHandler {
             while !Task.isCancelled {
@@ -255,7 +257,7 @@ final class Mailbox {
             // Said only over a live list. A disconnected one already has its band saying why, and
             // a notice per search typed into it would be the same sentence again.
             if let failure = await reloadFirstPage(from: client), connection == .live {
-                notice = PullRequestNotice(tone: .failure, title: "Could not search the mail", message: failure.message)
+                notice = InspectorNoticeContent(tone: .failure, title: "Could not search the mail", message: failure.message)
             }
         }
     }
@@ -271,7 +273,7 @@ final class Mailbox {
     private func reloadFirstPage(from client: MailpitClient) async -> MailpitFailure? {
         let asked = query
         let result = await client.page(query: asked, start: 0)
-        guard client.base == self.client?.base,
+        guard isCurrent(client),
               MailboxList.normalised(asked) == MailboxList.normalised(query) else { return nil }
         switch result {
         case .success(let page):
@@ -279,7 +281,8 @@ final class Mailbox {
             hasReadList = true
             return nil
         case .failure(let failure):
-            if failure == .unauthorised { connection = .disconnected(.unauthorised) }
+            // The connection is the loop's to change: a first page that fails inside `listen` is
+            // returned to it as the reason the socket is dropped.
             return failure
         }
     }
@@ -293,7 +296,7 @@ final class Mailbox {
         Task {
             defer { isLoadingPage = false }
             guard case .success(let page) = await client.page(query: asked, start: start),
-                  client.base == self.client?.base else { return }
+                  isCurrent(client) else { return }
             list.adopt(page, query: asked)
         }
     }
@@ -330,29 +333,35 @@ final class Mailbox {
 
     /// Takes the row out at once and asks Mailpit to follow. If Mailpit refuses, the list is read
     /// again rather than left showing a gap where a message still is.
+    ///
+    /// The request is not cancelled by a restart, so its answer is checked against the client
+    /// before anything is said: a delete that failed against the old address after Settings moved
+    /// on is not news about the new one, and reloading from the old client would put its mail back.
     func delete(_ id: MailpitMessageID) {
         guard let client else { return }
         list.remove([id])
-        removals += 1
         Task {
-            if case .failure(let failure) = await client.delete([id]) {
-                notice = PullRequestNotice(tone: .failure, title: "Could not delete the message", message: failure.message)
-                await reloadFirstPage(from: client)
-            }
+            guard case .failure(let failure) = await client.delete([id]), isCurrent(client) else { return }
+            notice = InspectorNoticeContent(tone: .failure, title: "Could not delete the message", message: failure.message)
+            await reloadFirstPage(from: client)
         }
     }
 
+    /// The same as `delete`, for the whole mailbox.
     func deleteAll() {
         guard let client else { return }
         list.removeAll()
         selection = nil
-        removals += 1
         Task {
-            if case .failure(let failure) = await client.deleteAll() {
-                notice = PullRequestNotice(tone: .failure, title: "Could not delete the mail", message: failure.message)
-                await reloadFirstPage(from: client)
-            }
+            guard case .failure(let failure) = await client.deleteAll(), isCurrent(client) else { return }
+            notice = InspectorNoticeContent(tone: .failure, title: "Could not delete the mail", message: failure.message)
+            await reloadFirstPage(from: client)
         }
+    }
+
+    /// Whether `client` is still the one Settings points at.
+    private func isCurrent(_ client: MailpitClient) -> Bool {
+        client.base == self.client?.base
     }
 
     // MARK: - Attachments
@@ -369,7 +378,7 @@ final class Mailbox {
     /// Fetches an attachment into Downloads, beside any copy already there rather than over it.
     func saveToDownloads(_ attachment: MailpitAttachment, of id: MailpitMessageID) async -> URL? {
         guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            notice = PullRequestNotice(tone: .failure, title: "Could not save the attachment", message: "Bloom could not find the Downloads folder.")
+            notice = InspectorNoticeContent(tone: .failure, title: "Could not save the attachment", message: "Bloom could not find the Downloads folder.")
             return nil
         }
         return await save(attachment, of: id, into: downloads, keepingExisting: true)
@@ -384,7 +393,7 @@ final class Mailbox {
         case .success(let bytes):
             data = bytes
         case .failure(let failure):
-            notice = PullRequestNotice(tone: .failure, title: "Could not fetch \(attachment.savedName)", message: failure.message)
+            notice = InspectorNoticeContent(tone: .failure, title: "Could not fetch \(attachment.savedName)", message: failure.message)
             return nil
         }
         let files = FileManager.default
@@ -397,35 +406,16 @@ final class Mailbox {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
-            notice = PullRequestNotice(tone: .failure, title: "Could not save \(name)", message: error.localizedDescription)
+            notice = InspectorNoticeContent(tone: .failure, title: "Could not save \(name)", message: error.localizedDescription)
             return nil
         }
     }
 
     // MARK: - Settings
 
-    /// What Bloom last heard at the address, in a sentence, for Settings > Mail, which is where the
-    /// address is typed. Without it the field is a box somebody types into and then has to go and
-    /// find the inspector to learn whether it worked.
-    ///
-    /// Takes the switch and the address as the field holds them, because the field is ahead of
-    /// this model by the debounce in `settingsChanged`, and a sentence about the old address under
-    /// a new one would be wrong for that moment.
+    /// The sentence under the address field. See `MailboxLink.statusLine`.
     func statusLine(isEnabled: Bool, address typed: String) -> String {
-        guard isEnabled else { return "Off. Bloom does not look for Mailpit until this is switched on." }
-        guard MailpitSettings.base(from: typed) != nil else {
-            return "This is not an address Bloom can use. It should look like \(MailpitSettings.defaultAddress)."
-        }
-        guard presence.isEnabled, typed == address else { return "Looking for Mailpit at this address." }
-        switch connection {
-        case .live:
-            return "Connected. The Mail tab is in the inspector."
-        case .connecting, .idle:
-            return "Looking for Mailpit at this address."
-        case .disconnected(let failure):
-            let next = showsTab ? "Bloom will keep trying." : "The Mail tab appears once it answers."
-            return "\(failure.message) \(next)"
-        }
+        link.statusLine(isEnabled: isEnabled, typed: typed, following: address)
     }
 
     private static var storedEnabled: Bool {

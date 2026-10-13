@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// What a press on the pull request strip left to say.
+/// What something the inspector was asked to do left to say: a press on the pull request strip, or
+/// a delete or search in the Mail tab. It was `PullRequestNotice` while the strip was its only
+/// writer, and the name stopped being true when the mail tab became the second.
 ///
-/// A value on `WorkspaceModel` rather than `@State` inside the strip, because the strip and the
+/// The strip's is a value on `WorkspaceModel` rather than `@State` inside the strip, because the strip and the
 /// notice are no longer in the same SwiftUI root: the strip is a title bar accessory and the
 /// notice is the first row of the inspector column, and a title bar accessory is hosted in a
 /// window of its own. The one thing they have to agree about is this.
-struct PullRequestNotice: Identifiable, Equatable {
+struct InspectorNoticeContent: Identifiable, Equatable {
     let id = UUID()
     var tone: InspectorNotice.Tone
     var title: String
@@ -50,7 +52,7 @@ struct InspectorNotice: View {
         }
     }
 
-    let notice: PullRequestNotice
+    let notice: InspectorNoticeContent
     let onDismiss: () -> Void
 
     @State private var isShowingDetails = false

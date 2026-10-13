@@ -33,7 +33,7 @@ struct MailPaneView: View {
 
     @State private var loaded: Loaded = .loading
     @State private var part: Part = .html
-    @State private var source: String?
+    @State private var source: Result<String, MailpitFailure>?
     @State private var preview: URL?
     /// What the last attachment saved said, under the chips, until the next message.
     @State private var saved: String?
@@ -163,21 +163,30 @@ struct MailPaneView: View {
                     .padding(Metrics.inset)
             }
         case .source:
-            if let source {
+            switch source {
+            case .success(let text):
                 ScrollView([.vertical, .horizontal]) {
-                    Text(source)
+                    Text(text)
                         .font(.system(.callout, design: .monospaced))
                         .textSelection(.enabled)
                         .fixedSize()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Metrics.inset)
                 }
-            } else {
+            // Said, with a way to ask again, rather than a spinner that never stops: the source is
+            // a second request, and it can fail when the message did not.
+            case .failure(let failure):
+                EmptyStateView(
+                    glyph: "exclamationmark.triangle",
+                    title: "Could not read the source",
+                    message: failure.message,
+                    actionTitle: "Try Again",
+                    action: { source = nil }
+                )
+            case nil:
                 LoadingView("Reading the source")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .task(id: message.id) {
-                        if case .success(let text) = await mailbox.source(of: message.id) { source = text }
-                    }
+                    .task(id: message.id) { source = await mailbox.source(of: message.id) }
             }
         }
     }

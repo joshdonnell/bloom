@@ -848,8 +848,8 @@ agent would like to use Bloom". None of that is true of the tools the agent brin
 
 The four pane tools are on the list because each adds or changes something the reader can see and
 undo, in the workspace whose agent is asking and nowhere else. `pane_close` refuses the two cases
-that would cost anything: it will not empty the centre column, and it cannot close the review or
-the notes, which hold the reader's own work.
+that would cost anything: it will not empty the centre column, and it cannot close the review, the
+notes or the mail, which a workspace has one of each and which hold what the reader is reading.
 
 `workspace_rename` is on it, and it is the entry that had to be argued against the quick prompt
 paragraph below rather than against the pane one above, because it overwrites something and keeps

@@ -17,8 +17,9 @@ enum MailTab {
     static func open(_ id: MailpitMessageID, in model: WorkspaceModel) {
         let mailbox = Mailbox.shared
         mailbox.select(id)
-        let subject = mailbox.list.summary(id)?.subject ?? ""
-        let tab = CenterTabStore.shared.showMail(workspaceID: model.workspace.id, message: id, subject: subject)
+        let tab = CenterTabStore.shared.showMail(
+            workspaceID: model.workspace.id, message: id, subject: mailbox.list.subject(of: id)
+        )
         WorkspaceTabsStore.shared.reveal(.tool(tab.id), in: model)
     }
 
@@ -28,28 +29,20 @@ enum MailTab {
         let mailbox = Mailbox.shared
         mailbox.select(id)
         guard let tab = CenterTabStore.shared.mail(for: model.workspace.id) else { return }
-        CenterTabStore.shared.pointMail(tab, at: id, subject: mailbox.list.summary(id)?.subject ?? "")
+        CenterTabStore.shared.pointMail(tab, at: id, subject: mailbox.list.subject(of: id))
     }
 
-    /// Deletes a message, and moves the selection and this workspace's mail tab on to the next
-    /// older one, so deleting a run of test mail is one key pressed several times. With nothing
-    /// left to move to, the tab stays where it is and says the message has gone.
+    /// Deletes a message, and moves the selection and this workspace's mail tab where
+    /// `MailboxList.deletion` says, which is the next older message for both.
     static func delete(_ id: MailpitMessageID, in model: WorkspaceModel) {
         let mailbox = Mailbox.shared
-        let next = mailbox.list.successor(afterRemoving: id)
-        let wasSelected = mailbox.selection == id
         let tab = CenterTabStore.shared.mail(for: model.workspace.id)
+        // Planned before the row goes, because the next message is found by where this one was.
+        let plan = mailbox.list.deletion(of: id, selection: mailbox.selection, tabShows: tab?.mailMessage)
         mailbox.delete(id)
-
-        guard let next else {
-            if wasSelected { mailbox.select(nil) }
-            return
-        }
-        let showsNext = tab?.mailMessage == id
-        // Read only when the tab is about to show it. See `Mailbox.select`.
-        if wasSelected { mailbox.select(next, markingRead: showsNext) }
-        if let tab, showsNext {
-            CenterTabStore.shared.pointMail(tab, at: next, subject: mailbox.list.summary(next)?.subject ?? "")
+        mailbox.select(plan.selection, markingRead: plan.marksRead != nil)
+        if let tab, let next = plan.tabShows {
+            CenterTabStore.shared.pointMail(tab, at: next, subject: mailbox.list.subject(of: next))
         }
     }
 }

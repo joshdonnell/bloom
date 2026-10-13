@@ -36,6 +36,12 @@ public struct MailboxList: Equatable, Sendable {
         messages.first { $0.id == id }
     }
 
+    /// The subject a mail tab is named by, or empty for a message the list does not hold, which
+    /// the tab reads as "no subject to show yet" rather than as a name.
+    public func subject(of id: MailpitMessageID) -> String {
+        summary(id)?.subject ?? ""
+    }
+
     /// The band over the list: how much mail there is, and how much of it a search kept.
     ///
     /// The whole mailbox's numbers, because the button beside this sentence deletes the whole
@@ -183,20 +189,6 @@ public struct MailboxList: Equatable, Sendable {
 
     // MARK: - Moving
 
-    /// The row `offset` places from `id`, for the arrow keys. Nil past either end, so a key held at
-    /// the bottom of the list stays on the last row rather than wrapping to the top.
-    ///
-    /// With nothing selected, or a selection the list no longer holds, down lands on the first row
-    /// and up on nothing.
-    public func neighbour(of id: MailpitMessageID?, offset: Int) -> MailpitMessageID? {
-        guard let id, let index = messages.firstIndex(where: { $0.id == id }) else {
-            return offset > 0 ? messages.first?.id : nil
-        }
-        let target = index + offset
-        guard messages.indices.contains(target) else { return nil }
-        return messages[target].id
-    }
-
     /// Where the selection goes when `id` is deleted: the row below, which is the next older
     /// message, or the row above when it was the last. Nil when it was the only one.
     public func successor(afterRemoving id: MailpitMessageID) -> MailpitMessageID? {
@@ -204,5 +196,50 @@ public struct MailboxList: Equatable, Sendable {
         if messages.indices.contains(index + 1) { return messages[index + 1].id }
         if index > 0 { return messages[index - 1].id }
         return nil
+    }
+
+    /// What deleting `id` does to the selection and to a workspace's mail tab.
+    ///
+    /// Both move on to the next older message, so deleting a run of test mail is one key pressed
+    /// several times. **When the tab moves, the selection moves with it**, even when the selection
+    /// was on another row: a tab showing one message beside a list highlighting another is two
+    /// answers to "which message am I on". The selection can sit elsewhere because it is the app's
+    /// and the tab is one workspace's.
+    ///
+    /// The message the tab moves on to is marked read, because it is about to be on screen. One
+    /// the selection lands on with no tab to show it is not: a message nobody has looked at is not
+    /// read because its neighbour went.
+    ///
+    /// - Parameters:
+    ///   - selection: the selected row, before the delete.
+    ///   - tabShows: the message this workspace's mail tab is on, or nil when it has no mail tab.
+    public func deletion(
+        of id: MailpitMessageID, selection: MailpitMessageID?, tabShows: MailpitMessageID?
+    ) -> MailDeletion {
+        let next = successor(afterRemoving: id)
+        let tabMoves = tabShows == id && next != nil
+        let newSelection = tabMoves || selection == id ? next : selection
+        return MailDeletion(
+            selection: newSelection,
+            tabShows: tabMoves ? next : nil,
+            marksRead: tabMoves ? next : nil
+        )
+    }
+}
+
+/// What `MailboxList.deletion` decided.
+public struct MailDeletion: Equatable, Sendable {
+    /// The selection afterwards.
+    public var selection: MailpitMessageID?
+    /// Where the mail tab moves to, or nil to leave it on the deleted message, which it then says
+    /// has gone.
+    public var tabShows: MailpitMessageID?
+    /// A message to mark read because the tab is about to show it.
+    public var marksRead: MailpitMessageID?
+
+    public init(selection: MailpitMessageID?, tabShows: MailpitMessageID?, marksRead: MailpitMessageID?) {
+        self.selection = selection
+        self.tabShows = tabShows
+        self.marksRead = marksRead
     }
 }

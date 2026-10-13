@@ -41,7 +41,11 @@ struct MailListPane: View {
                 InspectorNotice(notice: notice) { mailbox.notice = nil }
                 Hairline()
             }
-            if case .disconnected(let failure) = mailbox.connection, !mailbox.list.messages.isEmpty {
+            // Whenever a list that has been read stops being live, whether or not it has rows. With
+            // none, "No mail" under no band read as a mailbox waiting for mail that could not
+            // arrive. Before the first read the empty state below says it instead, and a password
+            // prompt has a state of its own.
+            if case .disconnected(let failure) = mailbox.connection, failure != .unauthorised, mailbox.hasReadList {
                 disconnected(failure)
                 Hairline()
             }

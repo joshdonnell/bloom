@@ -24,11 +24,11 @@ public enum InspectorTab: String, Hashable, CaseIterable, Sendable {
 
     /// The tabs worth drawing for a workspace, in the order the strip draws them.
     ///
-    /// Checks is the only conditional one, and it is deliberately **last**. A segmented control
-    /// sizes each segment to its own label and lays them out from the leading edge, so a tab
-    /// appended at the end arrives without moving the three before it: a pull request landing
-    /// mid-session cannot shift a segment out from under a click already on its way to it, and
-    /// neither can one going away.
+    /// Checks is conditional, and it is deliberately **last**. A segmented control sizes each
+    /// segment to its own label and lays them out from the leading edge, so a tab appended at the
+    /// end arrives without moving the ones before it: a pull request landing mid-session cannot
+    /// shift a segment out from under a click already on its way to it, and neither can one going
+    /// away.
     ///
     /// Mail is the other conditional tab, and it goes **before** Checks rather than after. Checks
     /// comes and goes with every pull request refresh, so it stays at the very end where it moves

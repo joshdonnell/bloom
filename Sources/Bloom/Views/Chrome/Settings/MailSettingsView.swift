@@ -7,17 +7,16 @@ import BloomCore
 /// on here, which is the only place it can be: see `MailpitSettings.isOnByDefault`. Once it is on,
 /// the inspector's Mail tab appears the first time Mailpit answers at the address.
 struct MailSettingsView: View {
-    @AppStorage(MailpitSettings.enabledKey) private var isEnabled = MailpitSettings.isOnByDefault
-    @AppStorage(MailpitSettings.addressKey) private var address = MailpitSettings.defaultAddress
+    private var preferences = MailpitPreferences()
 
     private var mailbox: Mailbox { .shared }
 
     var body: some View {
         Form {
             Section {
-                Toggle("Show Mailpit's mail in the inspector", isOn: $isEnabled)
-                TextField("Address", text: $address, prompt: Text(MailpitSettings.defaultAddress))
-                    .disabled(!isEnabled)
+                Toggle("Show Mailpit's mail in the inspector", isOn: preferences.$isEnabled)
+                TextField("Address", text: preferences.$address, prompt: Text(MailpitSettings.defaultAddress))
+                    .disabled(!preferences.isEnabled)
                     .autocorrectionDisabled()
             } header: {
                 Text("Mailpit")
@@ -27,11 +26,9 @@ struct MailSettingsView: View {
             }
         }
         .settingsForm()
-        .onChange(of: isEnabled) { _, _ in mailbox.settingsChanged() }
-        .onChange(of: address) { _, _ in mailbox.settingsChanged() }
     }
 
     private var status: String {
-        mailbox.statusLine(isEnabled: isEnabled, address: address)
+        mailbox.statusLine(isEnabled: preferences.isEnabled, address: preferences.address)
     }
 }

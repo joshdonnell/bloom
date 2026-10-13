@@ -127,7 +127,7 @@ struct SettingsView: View {
         case .prompts: PromptSettingsView()
         case .terminal: TerminalSettingsView()
         case .browserAccess: BrowserAccessSettingsView()
-        case .passwords: BrowserSettingsView()
+        case .passwords: PasswordSettingsView()
         case .commandLine: CommandLineSettingsView()
         }
     }

@@ -173,8 +173,10 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
             context.baseURL = BrowserPasswordManager.extensionBaseURL
             context.uniqueIdentifier = BrowserPasswordManager.runtimeIdentifier(
                 bundleIdentifier: bundle.bundleIdentifier ?? found.identifier,
-                teamIdentifier: BrowserPasswordManager.teamIdentifier(ofBundleAt: url)
+                teamIdentifier: BrowserPasswordManager.signingTeam
             )
+            // Granted in full only because `locate` has already checked this appex is signed as
+            // 1Password's and refused it otherwise. See `BrowserPasswordManager+Signature`.
             for permission in webExtension.requestedPermissions {
                 context.setPermissionStatus(.grantedExplicitly, for: permission)
             }

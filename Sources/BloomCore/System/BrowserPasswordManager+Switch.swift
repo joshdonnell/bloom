@@ -94,6 +94,8 @@ extension BrowserPasswordManager {
                 status = .notInstalled
             case .unavailable(let reason):
                 status = .cannotLook(reason)
+            case .untrusted(_, let reason):
+                status = .failed(reason)
             }
             return nil
         }

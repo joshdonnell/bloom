@@ -213,7 +213,18 @@ extension AppModel {
         // Read again, because the census above was taken before the page had loaded, and a
         // failure that arrived while settling is the one thing a screenshot must not miss.
         let current = report(tab, number: chosen.number, name: chosen.name)
-        return await perform(command, on: session, tab: tab, report: current)
+        let arrivals = session.protectedPageArrivals
+        let answer = await perform(command, on: session, tab: tab, report: current)
+        // And again after, because every read awaits WebKit and the tab can move to one of
+        // 1Password's pages while it does. What was read then is dropped rather than handed over.
+        if let refusal = BrowserPasswordManager.agentRefusal(
+            address: session.displayAddress,
+            sawProtectedPage: session.protectedPageArrivals != arrivals,
+            browser: chosen.number
+        ) {
+            return .refused(refusal)
+        }
+        return answer
     }
 
     /// One verb, on one live pane.

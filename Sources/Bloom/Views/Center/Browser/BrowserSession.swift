@@ -125,6 +125,11 @@ final class BrowserSession {
     /// drawn, weak because the pane owns it.
     @ObservationIgnored weak var extensionAnchor: NSView?
 
+    /// How many times this tab has arrived on one of 1Password's own pages. Only ever moves up, so
+    /// a bridge call that reads it before and after knows whether the tab went to one in between,
+    /// even if it has left again. See `BrowserPasswordManager.agentRefusal`.
+    @ObservationIgnored private(set) var protectedPageArrivals = 0
+
     /// KVO on everything the toolbar reads, because the navigation delegate does not see every
     /// navigation.
     ///
@@ -850,6 +855,7 @@ final class BrowserSession {
         if let url = webView.url, url != currentURL {
             currentURL = url
             changed.insert(.URL)
+            if BrowserPasswordManager.isExtensionPage(url) { protectedPageArrivals += 1 }
         }
         tell(changed)
         adopt(BrowserTabTitle.BrowserPage(address: displayAddress))

@@ -48,32 +48,83 @@ struct BrowserPasswordManagerTests {
         #expect(found?.identifier == "com.1password.safari.extension")
     }
 
-    @Test("An identifier under the old company name counts, and so does the app's folder")
-    func olderNamesCount() {
-        let agilebits = BrowserPasswordManager.Installed(
-            identifier: "com.agilebits.onepassword.safari", version: "", path: "/Applications/X.appex"
-        )
-        let byPath = BrowserPasswordManager.Installed(
-            identifier: "com.example.other", version: "", path: "/Applications/1Password Beta.app/x.appex"
-        )
-        #expect(BrowserPasswordManager.onePassword(in: [agilebits]) == agilebits)
-        #expect(BrowserPasswordManager.onePassword(in: [byPath]) == byPath)
+    @Test("Only 1Password's exact identifier is a candidate, whatever the name or folder says")
+    func onlyTheExactIdentifierCounts() {
+        let lookalikes = [
+            BrowserPasswordManager.Installed(
+                identifier: "com.1password.safari.extension.evil", version: "", path: "/Applications/X.appex"
+            ),
+            BrowserPasswordManager.Installed(
+                identifier: "com.1password.other", version: "", path: "/Applications/X.appex"
+            ),
+            BrowserPasswordManager.Installed(
+                identifier: "com.agilebits.onepassword.safari", version: "", path: "/Applications/X.appex"
+            ),
+            BrowserPasswordManager.Installed(
+                identifier: "com.example.other", version: "", path: "/Applications/1Password.app/x.appex"
+            ),
+            BrowserPasswordManager.Installed(
+                identifier: "COM.1PASSWORD.SAFARI.EXTENSION", version: "", path: "/Applications/X.appex"
+            ),
+        ]
+        #expect(BrowserPasswordManager.onePassword(in: lookalikes) == nil)
     }
 
-    @Test("The path fallback reads the containing app's name, not any folder or prefix")
-    func thePathFallbackIsAnchoredToTheApp() {
-        let inAFolder = BrowserPasswordManager.Installed(
-            identifier: "com.example.helper", version: "", path: "/Applications/1Password/Helper.app/x.appex"
+    // MARK: - The signature
+
+    @Test("A found appex is kept only when its signature is 1Password's")
+    func aFoundAppexIsVerified() {
+        let installed = BrowserPasswordManager.Installed(
+            identifier: BrowserPasswordManager.extensionIdentifier, version: "8", path: "/Applications/X.appex"
         )
-        let lookalike = BrowserPasswordManager.Installed(
-            identifier: "com.example.other", version: "", path: "/Applications/1PasswordSomething.app/x.appex"
+        let trusted = BrowserPasswordManager.verified(.found(installed)) { _ in .trusted }
+        #expect(trusted == .found(installed))
+        let refused = BrowserPasswordManager.verified(.found(installed)) { _ in .untrusted("not 1Password's.") }
+        #expect(refused == .untrusted(installed, "not 1Password's."))
+    }
+
+    @Test("Nothing but a found appex is checked at all")
+    func otherAnswersAreNotChecked() {
+        for lookup: BrowserPasswordManager.Lookup in [.notInstalled, .unavailable("timed out")] {
+            let passed = BrowserPasswordManager.verified(lookup) { _ in
+                Issue.record("checked a signature for \(lookup)")
+                return .trusted
+            }
+            #expect(passed == lookup)
+        }
+    }
+
+    @Test("The team the signature carries has to be 1Password's")
+    func theTeamIsChecked() {
+        #expect(BrowserPasswordManager.signature(team: "2BUA8C4S2C") == .trusted)
+        #expect(BrowserPasswordManager.signature(team: "ABCDE12345") != .trusted)
+        #expect(BrowserPasswordManager.signature(team: nil) != .trusted)
+    }
+
+    @Test("The requirement pins the identifier and the team")
+    func theRequirementNamesOnePassword() {
+        let requirement = BrowserPasswordManager.codeRequirement
+        #expect(requirement.hasPrefix("identifier \"com.1password.safari.extension\" and anchor apple generic"))
+        #expect(requirement.contains("certificate leaf[subject.OU] = \"2BUA8C4S2C\""))
+    }
+
+    @Test("A real bundle signed by somebody else is refused, and so is one that is not there")
+    func otherSignaturesAreRefused() {
+        let calculator = URL(filePath: "/System/Applications/Calculator.app", directoryHint: .isDirectory)
+        #expect(BrowserPasswordManager.signature(ofBundleAt: calculator) != .trusted)
+        let nowhere = URL(filePath: "/nonexistent/1Password.appex", directoryHint: .isDirectory)
+        #expect(BrowserPasswordManager.signature(ofBundleAt: nowhere) != .trusted)
+    }
+
+    @Test("An untrusted appex ends the attempt as a failure that says why")
+    func anUntrustedAppexFails() {
+        var lifecycle = BrowserPasswordManager.Switch()
+        let attempt = lifecycle.turnOn()
+        let installed = BrowserPasswordManager.Installed(
+            identifier: BrowserPasswordManager.extensionIdentifier, version: "8", path: "/x"
         )
-        let plain = BrowserPasswordManager.Installed(
-            identifier: "com.example.other", version: "", path: "/Applications/1Password.app/x.appex"
-        )
-        #expect(BrowserPasswordManager.onePassword(in: [inAFolder]) == nil)
-        #expect(BrowserPasswordManager.onePassword(in: [lookalike]) == nil)
-        #expect(BrowserPasswordManager.onePassword(in: [plain]) == plain)
+        #expect(lifecycle.looked(.untrusted(installed, "it is not signed by 1Password."), attempt: attempt) == nil)
+        #expect(lifecycle.status == .failed("it is not signed by 1Password."))
     }
 
     @Test("pluginkit failing is not the same answer as 1Password missing")
@@ -147,6 +198,17 @@ struct BrowserPasswordManagerTests {
         #expect(BrowserPasswordManager.agentRefusal(address: "https://my.1password.com/", browser: 1) == nil)
         #expect(BrowserPasswordManager.agentRefusal(address: "http://localhost:3000", browser: 1) == nil)
         #expect(BrowserPasswordManager.agentRefusal(address: "", browser: 1) == nil)
+    }
+
+    @Test("A read that saw one of 1Password's pages is refused even after the tab has left it")
+    func aReadThatSawAProtectedPageIsDropped() {
+        let refusal = BrowserPasswordManager.agentRefusal(
+            address: "http://localhost:3000", sawProtectedPage: true, browser: 3
+        )
+        #expect(refusal?.hasPrefix("Browser 3 went to one of 1Password's own pages") == true)
+        #expect(BrowserPasswordManager.agentRefusal(
+            address: "http://localhost:3000", sawProtectedPage: false, browser: 3
+        ) == nil)
     }
 
     @Test("A failure says why, and a loaded extension names its version when it has one")

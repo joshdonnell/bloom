@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// 1Password in the browser pane, by loading the Safari extension the user already has.
 ///
@@ -70,35 +69,18 @@ public enum BrowserPasswordManager {
 
     /// 1Password's appex out of everything installed, or nil.
     ///
-    /// By identifier first, since that is what 1Password controls, and by the containing app's
-    /// name as the fallback. `com.agilebits` is the prefix 1Password used before 1Password 8 and
-    /// still uses on some bundles. An appex inside `/Applications` beats one anywhere else, so a
-    /// copy sitting in a Downloads folder does not win over the installed one.
+    /// **By its exact identifier and nothing looser.** This once took any `com.1password.` or
+    /// `com.agilebits.` prefix, or any appex inside an app named 1Password, and every one of those
+    /// is a string another developer can register: the extension picked here is granted every
+    /// permission it asks for on every site, so a match on a name was a way for some other
+    /// extension to read every page in Bloom while Settings called it 1Password. A match here is
+    /// still only a candidate. `signature(ofBundleAt:)` decides whether it is 1Password's.
     ///
-    /// The fallback reads the outermost `.app` in the path and nothing else. A substring test on
-    /// the whole path would take any extension inside a folder called 1Password, and any app whose
-    /// name merely starts with the word.
+    /// An appex inside `/Applications` beats one anywhere else, so a copy sitting in a Downloads
+    /// folder does not win over the installed one.
     public static func onePassword(in installed: [Installed]) -> Installed? {
-        let matches = installed.filter(isOnePassword)
+        let matches = installed.filter { $0.identifier == extensionIdentifier }
         return matches.first { $0.path.hasPrefix("/Applications/") } ?? matches.first
-    }
-
-    private static func isOnePassword(_ entry: Installed) -> Bool {
-        let identifier = entry.identifier.lowercased()
-        if identifier.hasPrefix("com.1password.") || identifier.hasPrefix("com.agilebits.") {
-            return true
-        }
-        return isOnePasswordApp(containing: entry.path)
-    }
-
-    /// Whether the outermost app in `path` is 1Password's: named "1Password", or "1Password" and
-    /// then a space, which is "1Password for Safari" and "1Password Beta".
-    private static func isOnePasswordApp(containing path: String) -> Bool {
-        guard let app = path.split(separator: "/").first(where: { $0.hasSuffix(".app") }) else {
-            return false
-        }
-        let name = app.dropLast(".app".count)
-        return name == "1Password" || name.hasPrefix("1Password ")
     }
 
     /// What asking `pluginkit` came to.
@@ -110,6 +92,9 @@ public enum BrowserPasswordManager {
         case found(Installed)
         case notInstalled
         case unavailable(String)
+        /// An appex under 1Password's identifier whose code signature is not 1Password's. Nothing
+        /// of it is loaded and nothing is granted to it.
+        case untrusted(Installed, String)
     }
 
     /// What pluginkit's exit status and output say, without running it.
@@ -121,13 +106,28 @@ public enum BrowserPasswordManager {
         return onePassword(in: installed(fromPluginKit: output)).map(Lookup.found) ?? .notInstalled
     }
 
-    /// Asks `pluginkit` where 1Password's Safari extension is.
+    /// A found appex, kept only if its signature is 1Password's. `check` is
+    /// `signature(ofBundleAt:)`, passed in so the decision can be tested without a real bundle.
+    public static func verified(_ lookup: Lookup, check: (URL) -> Signature) -> Lookup {
+        guard case .found(let installed) = lookup else { return lookup }
+        switch check(URL(filePath: installed.path, directoryHint: .isDirectory)) {
+        case .trusted: return lookup
+        case .untrusted(let reason): return .untrusted(installed, reason)
+        }
+    }
+
+    /// Asks `pluginkit` where 1Password's Safari extension is, and checks the answer is signed by
+    /// 1Password before saying it was found.
+    ///
+    /// Here rather than in the host because checking a signature hashes every file in the appex,
+    /// and this runs off the main actor where the host does not.
     public static func locate() async -> Lookup {
         do {
             let result = try await Shell.run(
                 "/usr/bin/pluginkit", ["-m", "-v", "-p", extensionPoint], timeout: .seconds(30)
             )
-            return lookup(status: result.status, output: result.stdout, errors: result.stderr)
+            let lookup = lookup(status: result.status, output: result.stdout, errors: result.stderr)
+            return verified(lookup, check: signature(ofBundleAt:))
         } catch {
             return .unavailable(error.localizedDescription)
         }
@@ -174,7 +174,8 @@ public enum BrowserPasswordManager {
         return scheme == extensionBase.scheme?.lowercased() && host == extensionBase.host()?.lowercased()
     }
 
-    /// Why an agent may not drive browser `number` while it shows `address`, or nil when it may.
+    /// Why an agent may not drive browser `number`, or what it brought back may not be handed
+    /// over, or nil when it may.
     ///
     /// **The extension's own pages are the password manager itself, not a site.** They are where
     /// the Secret Key is typed and, once signed in, where the vault is listed. Every other page a
@@ -182,23 +183,23 @@ public enum BrowserPasswordManager {
     /// `BrowserPaneCommand` argues for; these are not that, so no tool reads, types into or
     /// photographs one. `browser_read` still answers, because it reports the address and title a
     /// tab already shows in the strip and nothing out of the page.
-    public static func agentRefusal(address: String, browser number: Int) -> String? {
+    ///
+    /// **Asked twice: before a tool runs, and again once it has.** A screenshot, the page's text,
+    /// its outline or its requests are each a wait on WebKit, and the tab can move while that wait
+    /// is in flight. The first version asked only before, so a tab that went from a site to one of
+    /// these pages during a read handed over whatever the read found there. `sawProtectedPage` is
+    /// the tab having arrived on one at any point during the call, which catches a visit that is
+    /// already over by the time the answer comes back as well as one that is not.
+    public static func agentRefusal(
+        address: String, sawProtectedPage: Bool = false, browser number: Int
+    ) -> String? {
+        if sawProtectedPage {
+            return "Browser \(number) went to one of 1Password's own pages while Bloom was working "
+                + "on it, so nothing it read is handed over. Call the tool again once it is back on "
+                + "a page of your own."
+        }
         guard let url = URL(string: address), isExtensionPage(url) else { return nil }
         return "Browser \(number) is showing one of 1Password's own pages, which hold its sign in "
             + "and its vault. Bloom does not let an agent read, type into or photograph them."
-    }
-
-    /// The signing team of the bundle at `url`, read from its code signature, or nil.
-    public static func teamIdentifier(ofBundleAt url: URL) -> String? {
-        var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else {
-            return nil
-        }
-        var information: CFDictionary?
-        let flags = SecCSFlags(rawValue: kSecCSSigningInformation)
-        guard SecCodeCopySigningInformation(code, flags, &information) == errSecSuccess,
-              let dictionary = information as? [String: Any]
-        else { return nil }
-        return dictionary[kSecCodeInfoTeamIdentifier as String] as? String
     }
 }

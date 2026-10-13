@@ -50,7 +50,7 @@ extension BrowserPasswordManager {
             return page(
                 "1Password is switched off",
                 "This is one of 1Password's own pages. Switch 1Password on in Settings, under "
-                    + "Browser, and it opens again by itself."
+                    + "Passwords, and it opens again by itself."
             )
         }
         switch status {
@@ -65,13 +65,13 @@ extension BrowserPasswordManager {
                 "1Password for Safari is not installed",
                 "This is one of 1Password's own pages, and it needs the extension. Install "
                     + "1Password for Safari from the App Store, then switch 1Password off and on "
-                    + "again in Settings, under Browser."
+                    + "again in Settings, under Passwords."
             )
         case .cannotLook(let reason):
             return page(
                 "Bloom could not look for 1Password",
                 "macOS could not be asked which Safari extensions are installed (\(reason)). "
-                    + "Switch 1Password off and on again in Settings, under Browser."
+                    + "Switch 1Password off and on again in Settings, under Passwords."
             )
         case .failed(let reason):
             return page(

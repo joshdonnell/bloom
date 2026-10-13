@@ -1,15 +1,8 @@
 import Foundation
 
-/// Whether the inspector offers a Mail tab, and how hard Bloom looks for a Mailpit to fill it.
-///
-/// **The tab appears the first time Mailpit answers and then stays for the rest of the launch.**
-/// Following the server live was the other way to do it, and it would have taken the tab away
-/// from under somebody reading a message the moment they stopped Mailpit to restart it, dropping
-/// the inspector back to Changes mid-sentence. Sticky means the person who has a Mailpit gets a tab
-/// that says "disconnected, retrying" instead, and the person who has none never sees one at all.
-///
-/// Changing the address starts over, because an answer from the old address says nothing about
-/// the new one.
+/// Whether Mailpit has answered at the configured address, and how hard Bloom looks for it.
+/// Mail stays in the sidebar while enabled. An answer changes the retry interval from a slow
+/// discovery search to a short reconnect after a working connection. Changing address starts over.
 public struct MailboxPresence: Equatable, Sendable {
     public private(set) var isEnabled: Bool
     public private(set) var hasAnswered = false
@@ -17,8 +10,6 @@ public struct MailboxPresence: Equatable, Sendable {
     public init(isEnabled: Bool) {
         self.isEnabled = isEnabled
     }
-
-    public var showsTab: Bool { isEnabled && hasAnswered }
 
     /// Whether to keep knocking on a port that has never answered, every `searchInterval`.
     ///

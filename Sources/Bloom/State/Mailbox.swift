@@ -3,19 +3,16 @@ import Observation
 import BloomCore
 
 /// Mailpit's mailbox, for the whole app: the connection, the list, the search and the selection.
+/// One connection feeds the app-wide Mail destination.
 ///
-/// **One for the app rather than one per workspace**, because there is one Mailpit and every
-/// workspace's Mail tab is a window onto the same mailbox. A per-workspace copy would be several
-/// websockets to one server, each holding its own idea of which messages are read.
-///
-/// What changes the list is `MailboxList`, and what the loop decides at each step (whether the tab
-/// exists, what the connection is, how long to wait) is `MailboxLink`, both in the core with their
+/// What changes the list is `MailboxList`, and what the loop decides at each step (what the
+/// connection is and how long to wait) is `MailboxLink`, both in the core with their
 /// tests. This is the part neither can be: the requests, the socket, the timers.
 ///
 /// The loop that finds Mailpit and keeps the websocket open is one task, `loop`. Until
 /// Mailpit first answers it asks every thirty seconds, and whenever Bloom comes to the front; once
-/// it has answered, the tab is up for the rest of the launch and a dropped socket is retried with a
-/// backoff. A changed address or switch in Settings cancels it and starts again.
+/// it has answered, a dropped socket is retried with a backoff. A changed address or switch in
+/// Settings cancels the loop and starts again.
 @MainActor
 @Observable
 final class Mailbox {
@@ -30,18 +27,17 @@ final class Mailbox {
     /// What Settings holds, as typed, for the sentences that name it.
     private(set) var address = MailpitSettings.defaultAddress
     private(set) var client: MailpitClient?
-    /// The row the inspector has selected. One for the app, like the list it is a row of.
+    /// The row selected in Mail's list. One for the app, like the list it is a row of.
     private(set) var selection: MailpitMessageID?
-    /// Moved by every message Mailpit reports leaving the mailbox, whoever removed it. A mail tab
+    /// Moved by every message Mailpit reports leaving the mailbox, whoever removed it. The reader
     /// watches this and asks again, so a message deleted from Mailpit's own UI does not stay on
     /// screen looking as if it were still there.
     ///
     /// Moved by the websocket's frames only, never by a delete Bloom asked for as well: the frame
-    /// for that delete follows a moment later, and moving it twice made every open mail tab fetch
-    /// its message twice per delete.
+    /// for that delete follows a moment later, and moving it twice made the reader fetch twice.
     private(set) var removals = 0
     /// Something the reader asked for that did not happen, said once under the search field.
-    var notice: InspectorNoticeContent?
+    var notice: PaneNoticeContent?
 
     /// The search field. Debounced into a new first page: see `scheduleSearch`.
     var query = "" {
@@ -52,7 +48,6 @@ final class Mailbox {
     }
 
     var connection: MailboxConnection { link.connection }
-    var showsTab: Bool { link.presence.showsTab }
 
     @ObservationIgnored private var started = false
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -87,8 +82,8 @@ final class Mailbox {
         ) { _ in
             MainActor.assumeIsolated { Mailbox.shared.settingsChanged() }
         }
-        // Read again rather than trusted from `init`: a view asking whether the tab shows can
-        // build this model before bootstrap starts it, and Settings may have moved in between.
+        // Read again rather than trusting `init`: the sidebar can build this model before
+        // bootstrap starts it, and Settings may have moved in between.
         link.reconfigure(isEnabled: Self.storedEnabled)
         restart()
     }
@@ -99,7 +94,7 @@ final class Mailbox {
     /// Compared before anything is scheduled, because the notification behind this fires for every
     /// default the app writes, not only these two. And compared again after the wait: an address
     /// typed back to what it was, or a switch flipped and flipped back inside it, is no change, and
-    /// restarting for it would hide the tab until Mailpit answered again.
+    /// restarting for it would replace a working connection with a search.
     private func settingsChanged() {
         guard Self.storedEnabled != link.presence.isEnabled || Self.storedAddress != address else {
             settingsChange?.cancel()
@@ -132,8 +127,7 @@ final class Mailbox {
         address = Self.storedAddress
         let previous = client?.base
         let client = MailpitSettings.base(from: address).map { MailpitClient(base: $0) }
-        // Off means off: with no client an open mail tab stops fetching too, rather than going on
-        // reading a Mailpit the inspector no longer shows.
+        // Off means off: with no client the reader stops fetching too.
         self.client = link.presence.isEnabled ? client : nil
         link.startLooking()
         guard let client = self.client else {
@@ -162,8 +156,8 @@ final class Mailbox {
             let answer = await client.info()
             // **Cancelled while the request was out means a restart has already begun**, for a new
             // address or with the switch off. Without this the old loop landed its answer on the
-            // new state: it marked an address that had never answered as answered, so the tab
-            // appeared for a Mailpit nobody had found, and set the connection beside it.
+            // new state: it marked an address that had never answered as answered and set the
+            // connection beside it.
             guard !Task.isCancelled else { return }
             let pause: Duration
             switch link.probed(answer) {
@@ -257,7 +251,7 @@ final class Mailbox {
             // Said only over a live list. A disconnected one already has its band saying why, and
             // a notice per search typed into it would be the same sentence again.
             if let failure = await reloadFirstPage(from: client), connection == .live {
-                notice = InspectorNoticeContent(tone: .failure, title: "Could not search the mail", message: failure.message)
+                notice = PaneNoticeContent(tone: .failure, title: "Could not search the mail", message: failure.message)
             }
         }
     }
@@ -279,6 +273,7 @@ final class Mailbox {
         case .success(let page):
             list.adopt(page, query: asked)
             hasReadList = true
+            if let selection, !list.contains(selection) { self.selection = nil }
             return nil
         case .failure(let failure):
             // The connection is the loop's to change: a first page that fails inside `listen` is
@@ -305,13 +300,9 @@ final class Mailbox {
 
     /// Moves the selection, and marks the message read the moment it is selected rather than when
     /// its body arrives, which is what Mail does with the arrow keys too.
-    ///
-    /// `markingRead` is false only for a selection that moved because the row under it was
-    /// deleted, with no mail tab open to show the one it landed on: a message nobody has looked at
-    /// is not read because its neighbour went.
-    func select(_ id: MailpitMessageID?, markingRead: Bool = true) {
+    func select(_ id: MailpitMessageID?) {
         selection = id
-        guard markingRead, let id, let row = list.summary(id), !row.isRead else { return }
+        guard let id, let row = list.summary(id), !row.isRead else { return }
         list.markRead([id])
         guard let client else { return }
         Task { _ = await client.markRead([id]) }
@@ -342,9 +333,16 @@ final class Mailbox {
         list.remove([id])
         Task {
             guard case .failure(let failure) = await client.delete([id]), isCurrent(client) else { return }
-            notice = InspectorNoticeContent(tone: .failure, title: "Could not delete the message", message: failure.message)
+            notice = PaneNoticeContent(tone: .failure, title: "Could not delete the message", message: failure.message)
             await reloadFirstPage(from: client)
         }
+    }
+
+    /// Deleting the message being read selects its next neighbour in the app-wide inbox.
+    func deleteAndSelectNext(_ id: MailpitMessageID) {
+        let next = selection == id ? list.successor(afterRemoving: id) : selection
+        delete(id)
+        if selection == id { select(next) }
     }
 
     /// The same as `delete`, for the whole mailbox.
@@ -354,7 +352,7 @@ final class Mailbox {
         selection = nil
         Task {
             guard case .failure(let failure) = await client.deleteAll(), isCurrent(client) else { return }
-            notice = InspectorNoticeContent(tone: .failure, title: "Could not delete the mail", message: failure.message)
+            notice = PaneNoticeContent(tone: .failure, title: "Could not delete the mail", message: failure.message)
             await reloadFirstPage(from: client)
         }
     }
@@ -378,7 +376,7 @@ final class Mailbox {
     /// Fetches an attachment into Downloads, beside any copy already there rather than over it.
     func saveToDownloads(_ attachment: MailpitAttachment, of id: MailpitMessageID) async -> URL? {
         guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            notice = InspectorNoticeContent(tone: .failure, title: "Could not save the attachment", message: "Bloom could not find the Downloads folder.")
+            notice = PaneNoticeContent(tone: .failure, title: "Could not save the attachment", message: "Bloom could not find the Downloads folder.")
             return nil
         }
         return await save(attachment, of: id, into: downloads, keepingExisting: true)
@@ -393,7 +391,7 @@ final class Mailbox {
         case .success(let bytes):
             data = bytes
         case .failure(let failure):
-            notice = InspectorNoticeContent(tone: .failure, title: "Could not fetch \(attachment.savedName)", message: failure.message)
+            notice = PaneNoticeContent(tone: .failure, title: "Could not fetch \(attachment.savedName)", message: failure.message)
             return nil
         }
         let files = FileManager.default
@@ -406,7 +404,7 @@ final class Mailbox {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
-            notice = InspectorNoticeContent(tone: .failure, title: "Could not save \(name)", message: error.localizedDescription)
+            notice = PaneNoticeContent(tone: .failure, title: "Could not save \(name)", message: error.localizedDescription)
             return nil
         }
     }

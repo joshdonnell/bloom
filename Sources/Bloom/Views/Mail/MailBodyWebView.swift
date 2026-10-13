@@ -13,9 +13,8 @@ import BloomCore
 /// do load: this is mail the reader's own app just sent, and a template with its images stripped
 /// looks broken in a way the real thing is not.
 ///
-/// **A link opens in the workspace's browser tab**, not here and not in another app. Test mail is
-/// mostly verification and reset links pointing at the dev server, and the browser tab beside the
-/// mail is where that server already is. Anything that is not http or https is left alone.
+/// **A link opens in the default browser**, since Mail is not tied to a workspace. Anything that
+/// is not http or https is left alone.
 struct MailBodyWebView: NSViewRepresentable {
     var url: URL
     var onLink: @MainActor (URL) -> Void

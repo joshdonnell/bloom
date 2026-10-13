@@ -89,10 +89,6 @@ struct CenterTab: Identifiable, Hashable, Codable, Sendable {
     /// bottom panel's, the migration in `CenterTabStore.adoptTerminalTabs` drains it, and nothing
     /// has written a row to it since. Decoded as nil for every tab written before this existed.
     var runScriptID: String?
-    /// Mail only: the Mailpit message on the tab, or nil before one has been opened. Its subject is
-    /// kept in `pageTitle`, so the strip has a name for it on the first frame after a relaunch
-    /// without asking Mailpit.
-    var mailMessage: MailpitMessageID?
 
     /// The glyph that tells the kinds apart in the strip. Chats carry one too now, and the whole
     /// vocabulary is `PaneGlyph`.
@@ -102,7 +98,6 @@ struct CenterTab: Identifiable, Hashable, Codable, Sendable {
         case .browser: PaneGlyph.browser
         case .review: PaneGlyph.review
         case .notes: PaneGlyph.notes
-        case .mail: PaneGlyph.mail
         }
     }
 
@@ -114,10 +109,6 @@ struct CenterTab: Identifiable, Hashable, Codable, Sendable {
     /// is always the same thing, so a name typed over it would only ever be a name for the
     /// workspace, which the sidebar already carries.
     static let notesTitle = PaneNaming.notes
-
-    /// What the mail tab is called with no message on it. With one, it is the subject: see
-    /// `CenterTabStore.displayTitle`.
-    static let mailTitle = PaneNaming.mail
 
     // MARK: - Decoding
 
@@ -142,7 +133,6 @@ struct CenterTab: Identifiable, Hashable, Codable, Sendable {
         // shared review. See `isPinnedToPath`.
         isPinnedToPath = try container.decodeIfPresent(Bool.self, forKey: .isPinnedToPath) ?? false
         runScriptID = try container.decodeIfPresent(String.self, forKey: .runScriptID)
-        mailMessage = try container.decodeIfPresent(MailpitMessageID.self, forKey: .mailMessage)
         showsAllFiles = try container.decodeIfPresent(Bool.self, forKey: .showsAllFiles)
             ?? (kind == .review && !isPinnedToPath)
     }

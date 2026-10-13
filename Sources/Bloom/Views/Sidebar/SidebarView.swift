@@ -154,6 +154,13 @@ struct SidebarView: View {
     private var list: some View {
         ScrollViewReader { proxy in
             List(selection: $listSelection) {
+                if Mailbox.shared.link.presence.isEnabled {
+                    Label("Mail", systemImage: "envelope")
+                        .font(Typo.label)
+                        .badge(Mailbox.shared.list.unread)
+                        .tag(SidebarSelection.mail)
+                        .sidebarSelection(selectionStyle(for: .mail))
+                }
                 ForEach(topSections, id: \.rawValue) { section in
                     if section == .work {
                         workSection

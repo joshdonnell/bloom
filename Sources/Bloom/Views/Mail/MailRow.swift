@@ -1,7 +1,7 @@
 import SwiftUI
 import BloomCore
 
-/// One message in the inspector's mail list: who sent it, when, what it is about, and the first
+/// One message in Mail's list: who sent it, when, what it is about, and the first
 /// line of it.
 ///
 /// Three lines rather than the one a changed file gets, because the question a reader brings to

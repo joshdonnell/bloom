@@ -144,7 +144,7 @@ public struct MailpitAttachment: Equatable, Identifiable, Sendable, Decodable {
     }
 }
 
-/// One message in full, as the mail tab draws it.
+/// One message in full, as Mail's reader draws it.
 public struct MailpitMessage: Equatable, Identifiable, Sendable, Decodable {
     public var id: MailpitMessageID
     public var from: MailpitAddressee?
@@ -216,7 +216,7 @@ public struct MailpitPage: Equatable, Sendable, Decodable {
     /// Unread messages in the whole mailbox. Measured on v1.31, a search page carries the
     /// mailbox's count here too and puts the matches' count in `messages_unread`, which nothing
     /// here reads. `MailboxList.adopt` still takes it only from an unfiltered page, so a Mailpit
-    /// that ever answers the other way cannot put a search's count on the tab.
+    /// that ever answers the other way cannot put a search's count in the sidebar.
     public var unread: Int
     /// How many messages the query matches, which is the count paging runs up to.
     public var matching: Int

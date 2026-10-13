@@ -134,7 +134,6 @@ public enum WorkspaceTabDetail: Sendable, Equatable {
     case browser(BrowserPaneReport)
     case review(WorkspaceTabReview)
     case notes(WorkspaceTabNote)
-    case mail(WorkspaceTabMail)
 
     public var kind: PaneCensusKind {
         switch self {
@@ -143,7 +142,6 @@ public enum WorkspaceTabDetail: Sendable, Equatable {
         case .browser: .browser
         case .review: .review
         case .notes: .notes
-        case .mail: .mail
         }
     }
 
@@ -154,7 +152,6 @@ public enum WorkspaceTabDetail: Sendable, Equatable {
         case .browser(let browser): browser.json
         case .review(let review): review.json
         case .notes(let note): note.json
-        case .mail(let mail): mail.json
         }
     }
 }
@@ -269,22 +266,6 @@ public struct WorkspaceTabNote: Sendable, Equatable {
                     : "The text of the note is the person's own and is not reported here."
             ),
         ])
-    }
-}
-
-/// The mail tab: the subject of the message it is on, which the tab already holds as its title.
-///
-/// Never the message itself. Reading it would be a request to Mailpit inside a listing, which is
-/// the line this whole family is drawn against, and mail tools of their own are a separate decision.
-public struct WorkspaceTabMail: Sendable, Equatable {
-    public var subject: String
-
-    public init(subject: String) {
-        self.subject = subject
-    }
-
-    public var json: JSONValue {
-        .object(["subject": .string(subject)])
     }
 }
 

@@ -67,12 +67,6 @@ final class CenterTabStore {
         tabs(for: workspaceID).first { $0.kind == .notes }
     }
 
-    /// The workspace's one mail tab, if it has been opened. One, like the review: clicking another
-    /// message repoints it rather than opening a second.
-    func mail(for workspaceID: WorkspaceID) -> CenterTab? {
-        tabs(for: workspaceID).first { $0.kind == .mail }
-    }
-
     /// What the strip calls a tab, whichever kind it is.
     ///
     /// One function because it was three, and two of them disagreed: the Go to Tab menu, and
@@ -111,8 +105,6 @@ final class CenterTabStore {
             if tab.isPinnedToPath { return (tab.path as NSString).lastPathComponent }
             if model.changedFiles.contains(where: { $0.path == tab.path }) { return tab.title }
             return (tab.path as NSString).lastPathComponent
-        case .mail:
-            return tab.pageTitle.isEmpty ? CenterTab.mailTitle : tab.pageTitle
         case .terminal, .notes:
             return tab.title
         }
@@ -378,31 +370,6 @@ final class CenterTabStore {
         return tab
     }
 
-    /// Opens the workspace's mail tab on `message`, or points the one it already has there.
-    @discardableResult
-    func showMail(workspaceID: WorkspaceID, message: MailpitMessageID, subject: String) -> CenterTab {
-        if let existing = mail(for: workspaceID) {
-            pointMail(existing, at: message, subject: subject)
-            return mail(for: workspaceID) ?? existing
-        }
-        var tabs = tabs(for: workspaceID)
-        var tab = CenterTab(workspaceID: workspaceID, kind: .mail, title: CenterTab.mailTitle, pageTitle: subject)
-        tab.mailMessage = message
-        tabs.append(tab)
-        apply(tabs, to: workspaceID)
-        return tab
-    }
-
-    /// Repoints an open mail tab without bringing it forward, which is what walking the inspector's
-    /// list with the arrow keys does.
-    func pointMail(_ tab: CenterTab, at message: MailpitMessageID, subject: String) {
-        guard tab.mailMessage != message || tab.pageTitle != subject else { return }
-        update(tab) {
-            $0.mailMessage = message
-            $0.pageTitle = subject
-        }
-    }
-
     /// Called as the page navigates, so the tab remembers where it got to.
     ///
     /// **The only thing that ever clears a page title.** A navigation within one host keeps the
@@ -450,10 +417,6 @@ final class CenterTabStore {
         // closing a window onto it, and the last keystroke was written before the tab went. See
         // `NotesPaneView`, which saves on the way out.
         case .notes:
-            break
-        // Nor does the mail. The message is Mailpit's, and the web view showing it belongs to the
-        // pane, which goes with the tab.
-        case .mail:
             break
         }
     }
@@ -553,7 +516,6 @@ final class CenterTabStore {
         case .browser: PaneNaming.browser
         case .review: CenterTab.reviewTitle
         case .notes: CenterTab.notesTitle
-        case .mail: CenterTab.mailTitle
         }
         return PaneNaming.nextTitle(base: base, taken: tabs.filter { $0.kind == kind }.map(\.title))
     }

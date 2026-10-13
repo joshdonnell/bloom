@@ -184,12 +184,6 @@ struct InspectorToolbar: View {
     /// one file inside it, and the field holding a word is what says the list below is showing
     /// fewer.
     private func title(for tab: InspectorTab) -> String {
-        // The mailbox's unread count, for the reason the Changes count is the diff's: it names the
-        // tab, and a search narrowing the list does not change how much mail is waiting.
-        if tab == .mail {
-            let unread = Mailbox.shared.list.unread
-            return unread > 0 ? "\(tab.rawValue) (\(unread))" : tab.rawValue
-        }
         guard tab == .changes, model.inspectorTab != .history, !model.changedFiles.isEmpty else { return tab.rawValue }
         return "\(tab.rawValue) (\(Set(model.changedFiles.map(\.path)).count))"
     }

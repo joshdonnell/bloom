@@ -18,8 +18,6 @@ public enum CenterTabKind: String, Codable, Sendable, CaseIterable {
     case review
     /// The workspace's scratch text.
     case notes
-    /// One message out of Mailpit, repointed as the inspector's mail list is walked.
-    case mail
 }
 
 /// What goes in the half a split opens, worked out from the pane being split.
@@ -91,7 +89,7 @@ public enum PaneSplit {
             switch tabKind {
             case .terminal: return .freshTerminal
             case .browser: return .freshBrowser
-            case .review, .notes, .mail, nil: return .nothing
+            case .review, .notes, nil: return .nothing
             }
         }
     }

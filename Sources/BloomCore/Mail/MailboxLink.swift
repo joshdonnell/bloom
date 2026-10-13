@@ -64,8 +64,8 @@ public struct MailboxLink: Equatable, Sendable {
 
     /// What `info` said.
     ///
-    /// A password prompt still counts as Mailpit answering. The tab appears, and the tab is where
-    /// the reader is told what it wants; anything else that fails is not counted as Mailpit at all.
+    /// A password prompt still counts as Mailpit answering. The Mail destination explains it;
+    /// anything else that fails is not counted as Mailpit answering.
     public mutating func probed(_ answer: Result<MailpitInfo, MailpitFailure>) -> Next {
         switch answer {
         case .success:
@@ -121,12 +121,11 @@ public struct MailboxLink: Equatable, Sendable {
         guard presence.isEnabled, typed == following else { return "Looking for Mailpit at this address." }
         switch connection {
         case .live:
-            return "Connected. The Mail tab is in the inspector."
+            return "Connected. Mail is in the sidebar."
         case .connecting, .idle:
             return "Looking for Mailpit at this address."
         case .disconnected(let failure):
-            let next = presence.showsTab ? "Bloom will keep trying." : "The Mail tab appears once it answers."
-            return "\(failure.message) \(next)"
+            return "\(failure.message) Bloom will keep trying."
         }
     }
 }

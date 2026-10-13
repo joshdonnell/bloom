@@ -106,9 +106,7 @@ final class WorkspaceModel {
     private var chosenInspectorTab: InspectorTab = .changes
 
     /// The tabs the strip may draw for this workspace, and the one it is showing.
-    var availableInspectorTabs: [InspectorTab] {
-        InspectorTab.available(for: pullRequest, showsMail: Mailbox.shared.showsTab)
-    }
+    var availableInspectorTabs: [InspectorTab] { InspectorTab.available(for: pullRequest) }
 
     private var rememberedHistoryCommit: BranchCommit? {
         guard let lastHistoryCommit, branchCommits.canOffer(.commit(lastHistoryCommit)) else { return nil }
@@ -229,7 +227,7 @@ final class WorkspaceModel {
     /// in the title bar now. A title bar accessory is laid out from a frame set by hand, one row
     /// tall, so a notice added under the strip was drawn into a band with no room for it and cut
     /// off mid sentence. See `TitleBarStrip` and `InspectorView`.
-    var pullRequestNotice: InspectorNoticeContent?
+    var pullRequestNotice: PaneNoticeContent?
     /// The branch this workspace was carried on to when its pull request merged, while the strip
     /// is still drawing that branch and nothing has been committed to it.
     ///

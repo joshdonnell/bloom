@@ -115,7 +115,7 @@ public enum BridgeToolApproval {
         "pane_split",
         // Closing is on this list for the same reason opening is, and because it refuses the two
         // cases that would cost anything: it will not empty the centre column, and it cannot name
-        // the review, the notes or the mail, which hold the reader's own work and reading.
+        // the review or the notes, which hold the reader's own work.
         "pane_close",
         // A name, on a tab the reader is looking at, which they undo by double clicking it and
         // typing the old one back. There is nothing here for a person to weigh that they cannot

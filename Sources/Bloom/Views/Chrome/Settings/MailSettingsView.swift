@@ -5,7 +5,7 @@ import BloomCore
 ///
 /// One address for the whole Mac, for the reason `MailpitSettings` gives. Off until it is switched
 /// on here, which is the only place it can be: see `MailpitSettings.isOnByDefault`. Once it is on,
-/// the inspector's Mail tab appears the first time Mailpit answers at the address.
+/// Mail appears in the sidebar even while Bloom is still looking for the server.
 struct MailSettingsView: View {
     private var preferences = MailpitPreferences()
 
@@ -14,15 +14,18 @@ struct MailSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Show Mailpit's mail in the inspector", isOn: preferences.$isEnabled)
+                Toggle("Show Mail in the sidebar", isOn: preferences.$isEnabled)
                 TextField("Address", text: preferences.$address, prompt: Text(MailpitSettings.defaultAddress))
                     .disabled(!preferences.isEnabled)
                     .autocorrectionDisabled()
             } header: {
                 Text("Mailpit")
             } footer: {
-                Text(status)
-                    .settingsFootnote()
+                VStack(alignment: .leading, spacing: Metrics.spacingSmall) {
+                    Text(status)
+                    Text("This is Mailpit's web address. To send test mail, configure your app's SMTP server separately. Mailpit defaults to localhost:1025.")
+                }
+                .settingsFootnote()
             }
         }
         .settingsForm()

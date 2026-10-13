@@ -14,7 +14,7 @@ public enum MailpitSettings {
 
     /// Off until somebody switches it on in Settings > Mail. On by default, Bloom would knock on a
     /// port on every Mac it runs on, every thirty seconds, for a tool most of them do not have, and
-    /// a Mail tab would turn up unasked on any Mac that happened to have something on 8025.
+    /// Mail would turn up unasked in the sidebar.
     public static let isOnByDefault = false
     public static let defaultAddress = "http://localhost:8025"
 

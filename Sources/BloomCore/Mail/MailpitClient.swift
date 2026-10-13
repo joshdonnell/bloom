@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// Why Mailpit could not answer, in the words the inspector uses.
+/// Why Mailpit could not answer, in the words the Mail destination uses.
 public enum MailpitFailure: Error, Equatable, Sendable {
     /// Nothing answered at the address: Mailpit is not running, or it is somewhere else.
     case unreachable
@@ -26,7 +26,7 @@ public enum MailpitFailure: Error, Equatable, Sendable {
     }
 }
 
-/// Mailpit's v1 API, as much of it as the mail tab and the inspector use.
+/// Mailpit's v1 API, as much of it as the Mail destination uses.
 ///
 /// Requests are made here, in the core, and sent through an injected transport, so a test can
 /// stand in for Mailpit and pin the method, the path and the body of every call. The live
@@ -79,7 +79,7 @@ public struct MailpitClient: Sendable {
     }
 
     /// The message's HTML body as Mailpit renders it for its own preview, with inline images
-    /// already pointed at its part routes so they load. This is what the mail tab's web view opens.
+    /// already pointed at its part routes so they load. This is what the reader's web view opens.
     public func htmlURL(of id: MailpitMessageID) -> URL {
         base.appending(path: "view/\(id.rawValue).html")
     }

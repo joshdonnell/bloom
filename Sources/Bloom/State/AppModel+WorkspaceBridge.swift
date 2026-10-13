@@ -775,9 +775,9 @@ extension AppModel {
 
     /// What a pane is showing, as one of the three kinds a tool may name.
     ///
-    /// Nil for the review, the notes and the mail, which is what keeps `pane_close` off them: they
-    /// are the three a workspace has exactly one of and they hold what the reader is reading rather
-    /// than the agent's work, so a tool that cannot name them cannot close them.
+    /// Nil for a review and for the notes, which is what keeps `pane_close` off them: they are the
+    /// two a workspace has exactly one of and they hold the reader's own work rather than the
+    /// agent's, so a tool that cannot name them cannot close them.
     private func paneKind(of content: PaneContent, in workspaceID: WorkspaceID) -> PaneKind? {
         switch content {
         case .chat: return .chat
@@ -787,7 +787,7 @@ extension AppModel {
             switch tab.kind {
             case .terminal: return .terminal
             case .browser: return .browser
-            case .review, .notes, .mail: return nil
+            case .review, .notes: return nil
             }
         }
     }

@@ -32,7 +32,7 @@ struct InspectorFilterField: View {
     /// way out if the arrows are ever wanted here too, and its head is where that is written up.
     var onReturn: @MainActor () -> Void
     /// The words in the empty field, and what VoiceOver calls it. The two file tabs take the
-    /// default; the mail tab searches rather than filters, and says so.
+    /// default; Mail searches rather than filters, and says so.
     var placeholder = "Filter files"
 
     @FocusState private var isFocused: Bool

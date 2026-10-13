@@ -23,11 +23,10 @@ struct PaneSplitTests {
         #expect(PaneSplit.duplicating(tool, tabKind: .browser) == .freshBrowser)
     }
 
-    @Test("the review, the notes and the mail cannot be split, so the menu has to grey rather than lie")
+    @Test("the review and the notes cannot be split, so the menu has to grey rather than lie")
     func theOnesWithNoSecondCopy() {
         #expect(PaneSplit.duplicating(tool, tabKind: .review) == .nothing)
         #expect(PaneSplit.duplicating(tool, tabKind: .notes) == .nothing)
-        #expect(PaneSplit.duplicating(tool, tabKind: .mail) == .nothing)
         #expect(!PaneSplit.duplicating(tool, tabKind: .review).opensAPane)
         #expect(!PaneSplit.duplicating(tool, tabKind: .notes).opensAPane)
     }
@@ -48,7 +47,7 @@ struct PaneSplitTests {
     /// These raw values are stored under `center.tabs.<workspaceID>` and must stay stable.
     @Test("the stored tab spellings stay stable")
     func wireFormat() {
-        #expect(CenterTabKind.allCases.map(\.rawValue) == ["terminal", "browser", "review", "notes", "mail"])
+        #expect(CenterTabKind.allCases.map(\.rawValue) == ["terminal", "browser", "review", "notes"])
     }
 
     // MARK: - Which row of a Split submenu carries the key
@@ -68,7 +67,7 @@ struct PaneSplitTests {
     /// eating `Cmd+\`.
     @Test("a pane that cannot be split has no row for the key")
     func noRowWhenNothingOpens() {
-        for kind in [CenterTabKind.review, .notes, .mail] {
+        for kind in [CenterTabKind.review, .notes] {
             let outcome = PaneSplit.duplicating(tool, tabKind: kind)
             #expect(outcome.sameAgainKind == nil, "\(kind)")
             #expect(!outcome.opensAPane, "\(kind)")

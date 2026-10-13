@@ -1,7 +1,7 @@
 import SwiftUI
 import BloomCore
 
-/// The top of the mail tab: the subject, who it is from and to, when, and what it carries.
+/// The top of the message reader: the subject, who it is from and to, when, and what it carries.
 ///
 /// The headers are usually what a test email is opened to check (did the reset go to the right
 /// address, is the sender the one the app is configured with), so they are drawn in full and

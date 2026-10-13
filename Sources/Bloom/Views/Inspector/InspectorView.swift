@@ -28,7 +28,7 @@ struct InspectorView: View {
             // to a button a few points above it, and an answer that appears under the tabs reads
             // as something about the list.
             if let notice = model.pullRequestNotice {
-                InspectorNotice(notice: notice) { model.pullRequestNotice = nil }
+                PaneNotice(notice: notice) { model.pullRequestNotice = nil }
                 Hairline()
             }
             if let failure = model.pullRequestRefreshFailure {
@@ -152,9 +152,6 @@ struct InspectorView: View {
             FileTreeView(model: model)
         case .changes, .history:
             ChangesBrowser(model: model)
-        case .mail:
-            // The same mailbox in every workspace: there is one Mailpit. See `Mailbox`.
-            MailListPane(model: model)
         case .checks:
             // Checks are GitHub's, read through whatever the workspace can reach: `gh` in a
             // worktree here, runbloom.app's own GitHub App for a workspace on a machine.

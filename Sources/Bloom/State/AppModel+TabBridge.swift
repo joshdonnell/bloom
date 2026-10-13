@@ -162,11 +162,6 @@ extension AppModel {
                 }
                 return .notes(WorkspaceTabNote(characters: characters))
 
-            case .mail:
-                // The stored subject rather than the strip's name, which is "Mail" for a tab with
-                // no message on it and would be reported as a message called that.
-                return .mail(WorkspaceTabMail(subject: tab.pageTitle))
-
             case .browser:
                 guard let number = numbers[tab.id] else { return nil }
                 return .browser(

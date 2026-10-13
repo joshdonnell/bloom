@@ -2,14 +2,13 @@ import SwiftUI
 import QuickLook
 import BloomCore
 
-/// The workspace's mail tab: one message, with its headers above and its body below.
+/// The message selected in the app-wide Mail destination, with headers and body.
 ///
-/// The tab names the message and this view asks Mailpit for it, again whenever anything leaves the
-/// mailbox, so a message deleted from here, from the inspector or from Mailpit's own UI turns into
+/// This view asks Mailpit again whenever anything leaves the mailbox, so a message deleted here
+/// or in Mailpit's own UI turns into
 /// "Message deleted" rather than staying on screen as if it were still there.
 struct MailPaneView: View {
-    let model: WorkspaceModel
-    var tab: CenterTab
+    @Environment(\.openURL) private var openURL
 
     private enum Loaded: Equatable {
         case loading
@@ -40,7 +39,7 @@ struct MailPaneView: View {
 
     var body: some View {
         Group {
-            if let id = tab.mailMessage {
+            if let id = mailbox.selection {
                 switch loaded {
                 case .loading:
                     LoadingView("Opening the message")
@@ -49,7 +48,7 @@ struct MailPaneView: View {
                     EmptyStateView(
                         glyph: "trash",
                         title: "Message deleted",
-                        message: "This message is no longer in Mailpit. Pick another in the inspector's Mail tab."
+                        message: "This message is no longer in Mailpit. Pick another from the list."
                     )
                 case .failed(let failure):
                     EmptyStateView(
@@ -64,15 +63,15 @@ struct MailPaneView: View {
                 }
             } else {
                 EmptyStateView(
-                    glyph: PaneGlyph.mail,
+                    glyph: "envelope",
                     title: "No message open",
-                    message: "Pick a message in the inspector's Mail tab."
+                    message: "Pick a message from the list."
                 )
             }
         }
         .background(Palette.surface)
-        .task(id: Ask(message: tab.mailMessage, removals: mailbox.removals)) {
-            guard let id = tab.mailMessage else { return }
+        .task(id: Ask(message: mailbox.selection, removals: mailbox.removals)) {
+            guard let id = mailbox.selection else { return }
             // Asked again after a removal elsewhere, the message on screen stays on screen while
             // the answer comes back; only a different message starts from a spinner.
             let isSame = if case .message(let shown) = loaded { shown.id == id } else { false }
@@ -88,8 +87,8 @@ struct MailPaneView: View {
             saved = nil
         }
         let result = await mailbox.message(id)
-        // The tab moved on while this was in flight.
-        guard tab.mailMessage == id, !Task.isCancelled else { return }
+        // The selection moved on while this was in flight.
+        guard mailbox.selection == id, !Task.isCancelled else { return }
         switch result {
         case .success(let message):
             if loaded != .message(message) { loaded = .message(message) }
@@ -130,7 +129,7 @@ struct MailPaneView: View {
             Spacer(minLength: 0)
 
             Button("Delete", systemImage: "trash") {
-                MailTab.delete(message.id, in: model)
+                mailbox.deleteAndSelectNext(message.id)
             }
             .labelStyle(.iconOnly)
             .inspectorBarControl()
@@ -151,7 +150,7 @@ struct MailPaneView: View {
         switch part {
         case .html:
             if let url = mailbox.htmlURL(of: message.id) {
-                MailBodyWebView(url: url) { link in BrowserTab.open(link, in: model) }
+                MailBodyWebView(url: url) { link in openURL(link) }
             }
         case .text:
             ScrollView {

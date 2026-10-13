@@ -58,6 +58,8 @@ struct DetailColumn: View {
         switch app.selection {
         case .home:
             HomeView()
+        case .mail:
+            MailView()
         case .workspace:
             EmptyView()
         case .conversation(let id):

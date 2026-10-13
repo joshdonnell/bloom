@@ -377,7 +377,7 @@ struct MailboxListTests {
         #expect(list.messages.map(\.id.rawValue) == ["a"])
     }
 
-    @Test("a search does not change the unread count on the tab")
+    @Test("a search does not change the sidebar unread count")
     func searchKeepsUnread() {
         var list = MailboxList()
         list.adopt(page(["a", "b"], unread: 5), query: "")
@@ -482,26 +482,26 @@ struct MailboxListTests {
     }
 }
 
-// MARK: - Whether the tab is there
+// MARK: - Discovery state
 
 @Suite("Mailbox presence")
 struct MailboxPresenceTests {
-    @Test("no tab until Mailpit has answered, and then it stays")
+    @Test("Mailpit is unknown until it answers, and then remembered")
     func sticky() {
         var presence = MailboxPresence(isEnabled: true)
-        #expect(!presence.showsTab)
+        #expect(!presence.hasAnswered)
         #expect(presence.isSearching)
 
         presence.answered()
-        #expect(presence.showsTab)
+        #expect(presence.hasAnswered)
         #expect(!presence.isSearching)
     }
 
-    @Test("switched off, there is no tab and no looking")
+    @Test("switched off, there is no looking")
     func disabled() {
         var presence = MailboxPresence(isEnabled: false)
         presence.answered()
-        #expect(!presence.showsTab)
+        #expect(!presence.hasAnswered)
         #expect(!presence.isSearching)
     }
 
@@ -510,7 +510,7 @@ struct MailboxPresenceTests {
         var presence = MailboxPresence(isEnabled: true)
         presence.answered()
         presence.reconfigure(isEnabled: true)
-        #expect(!presence.showsTab)
+        #expect(!presence.hasAnswered)
         #expect(presence.isSearching)
     }
 
@@ -522,76 +522,20 @@ struct MailboxPresenceTests {
     }
 }
 
-// MARK: - Deleting
-
-@Suite("Mail deletion")
-struct MailDeletionTests {
-    private let a = MailpitMessageID("a")
-    private let b = MailpitMessageID("b")
-    private let c = MailpitMessageID("c")
-
-    private var list: MailboxList {
-        var list = MailboxList()
-        list.adopt(page(["a", "b", "c"]), query: "")
-        return list
-    }
-
-    @Test("deleting the message on screen moves the tab and the selection on, and the next is read")
-    func onScreen() {
-        let plan = list.deletion(of: b, selection: b, tabShows: b)
-        #expect(plan == MailDeletion(selection: c, tabShows: c, marksRead: c))
-    }
-
-    @Test("deleting the selected row with no tab open moves the selection without reading anything")
-    func noTab() {
-        let plan = list.deletion(of: b, selection: b, tabShows: nil)
-        #expect(plan == MailDeletion(selection: c, tabShows: nil, marksRead: nil))
-    }
-
-    /// The selection is the app's and the tab is one workspace's, so they can differ. When the
-    /// tab moves the selection goes with it, so the two never show different messages.
-    @Test("when the tab moves, the selection follows it even from another row")
-    func selectionFollowsTheTab() {
-        let plan = list.deletion(of: b, selection: a, tabShows: b)
-        #expect(plan.selection == c)
-        #expect(plan.tabShows == c)
-    }
-
-    @Test("deleting another row leaves both where they were")
-    func elsewhere() {
-        let plan = list.deletion(of: c, selection: a, tabShows: a)
-        #expect(plan == MailDeletion(selection: a, tabShows: nil, marksRead: nil))
-    }
-
-    @Test("deleting the last message leaves the tab on it, to say it has gone")
-    func onlyOne() {
-        var only = MailboxList()
-        only.adopt(page(["a"]), query: "")
-        let plan = only.deletion(of: a, selection: a, tabShows: a)
-        #expect(plan == MailDeletion(selection: nil, tabShows: nil, marksRead: nil))
-    }
-
-    @Test("a tab is named by the subject the list holds, and by nothing for a message it does not")
-    func subject() {
-        #expect(list.subject(of: a) == "a")
-        #expect(list.subject(of: MailpitMessageID("z")) == "")
-    }
-}
-
 // MARK: - The loop's decisions
 
 @Suite("Mailbox link")
 struct MailboxLinkTests {
     private let info = MailpitInfo(version: "v1.31.2", messages: 0, unread: 0)
 
-    @Test("an answer shows the tab, resets the count and says to listen")
+    @Test("an answer resets the count and says to listen")
     func answered() {
         var link = MailboxLink(isEnabled: true)
         link.startLooking()
         #expect(link.connection == .connecting)
         let next = link.probed(.success(info))
         #expect(next == .listen)
-        #expect(link.presence.showsTab)
+        #expect(link.presence.hasAnswered)
         link.listening()
         #expect(link.connection == .live)
     }
@@ -604,24 +548,24 @@ struct MailboxLinkTests {
         #expect(first == .wait(MailboxPresence.searchInterval))
         #expect(second == .wait(MailboxPresence.searchInterval))
         #expect(link.connection == .disconnected(.unreachable))
-        #expect(!link.presence.showsTab)
+        #expect(!link.presence.hasAnswered)
     }
 
-    /// The tab is where the reader is told Mailpit wants a password, so a 401 has to bring it.
+    /// A password prompt proves Mailpit answered, even though Bloom cannot authenticate.
     @Test("a password prompt counts as Mailpit answering, and is backed off from")
     func unauthorised() {
         var link = MailboxLink(isEnabled: true)
         let next = link.probed(.failure(.unauthorised))
-        #expect(link.presence.showsTab)
+        #expect(link.presence.hasAnswered)
         #expect(link.connection == .disconnected(.unauthorised))
         #expect(next == .wait(MailboxPresence.reconnectDelay(afterFailures: 1)))
     }
 
-    @Test("something that is not Mailpit does not bring the tab")
+    @Test("something that is not Mailpit does not count as an answer")
     func notMailpit() {
         var link = MailboxLink(isEnabled: true)
         _ = link.probed(.failure(.undecodable))
-        #expect(!link.presence.showsTab)
+        #expect(!link.presence.hasAnswered)
     }
 
     @Test("a drop after a working connection retries quickly, then backs off")
@@ -634,8 +578,8 @@ struct MailboxLinkTests {
         #expect(link.connection == .disconnected(.unreachable))
         let next = link.probed(.failure(.unreachable))
         #expect(next == .wait(MailboxPresence.reconnectDelay(afterFailures: 2)))
-        // Still shown: the tab is sticky for the launch.
-        #expect(link.presence.showsTab)
+        // The earlier answer is remembered for the reconnect interval.
+        #expect(link.presence.hasAnswered)
     }
 
     @Test("a working connection starts the count again")
@@ -670,7 +614,7 @@ struct MailboxLinkTests {
         var link = MailboxLink(isEnabled: true)
         _ = link.probed(.success(info))
         link.reconfigure(isEnabled: true)
-        #expect(!link.presence.showsTab)
+        #expect(!link.presence.hasAnswered)
         #expect(link.connection == .connecting)
         link.reconfigure(isEnabled: false)
         #expect(link.connection == .idle)
@@ -707,21 +651,21 @@ struct MailpitStatusLineTests {
         #expect(line == "Looking for Mailpit at this address.")
     }
 
-    @Test("connected says where the tab is")
+    @Test("connected says where Mail is")
     func connected() {
         var link = MailboxLink(isEnabled: true)
         _ = link.probed(.success(info))
         link.listening()
-        #expect(link.statusLine(isEnabled: true, typed: address, following: address) == "Connected. The Mail tab is in the inspector.")
+        #expect(link.statusLine(isEnabled: true, typed: address, following: address) == "Connected. Mail is in the sidebar.")
     }
 
-    @Test("a failure says what happened, and what comes next depends on whether the tab is up")
+    @Test("a failure says what happened and that Bloom will retry")
     func failures() {
         var never = MailboxLink(isEnabled: true)
         _ = never.probed(.failure(.unreachable))
         #expect(
             never.statusLine(isEnabled: true, typed: address, following: address)
-                == "Nothing answered at this address. The Mail tab appears once it answers."
+                == "Nothing answered at this address. Bloom will keep trying."
         )
 
         var dropped = MailboxLink(isEnabled: true)

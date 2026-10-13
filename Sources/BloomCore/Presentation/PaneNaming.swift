@@ -49,8 +49,6 @@ public enum PaneNaming {
     public static let terminal = "Terminal"
     public static let browser = "Browser"
     public static let notes = "Notes"
-    /// What the mail tab is called before it has a message to take a subject from.
-    public static let mail = "Mail"
     /// The changes, which both columns call the same thing in their `+` menu and their strip.
     public static let changes = "Changes"
 

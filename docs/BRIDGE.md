@@ -713,9 +713,9 @@ to the chat about the parser", "bring the notes forward". A flat list of panes h
 that is a tab, since a split contributes two rows and neither of them is the thing the reader would
 click.
 
-A tab is one entry of that strip, and it is one of six things: a chat, a terminal, a browser, the
-review, the notes or the mail. The first three a workspace can have several of; the last three it
-has exactly one of each. A tab can also have been split, in which case it owns a small tree of panes and the
+A tab is one entry of that strip, and it is one of five things: a chat, a terminal, a browser, the
+review or the notes. The first three a workspace can have several of; the last two it has exactly
+one of each. A tab can also have been split, in which case it owns a small tree of panes and the
 other things living in them have dropped out of the strip. That last part is the one piece of
 window furniture a caller mostly does not need, so it is reported and kept small: a split tab lists
 what it has absorbed, kind and name, and nothing else. Ratios, axes, which half has the keyboard
@@ -730,7 +730,6 @@ What each kind says is what Bloom is already holding:
 | `browser` | The toolbar: where it is pointed, what the page calls itself, whether it is loading, and the number the `browser_` tools take |
 | `review` | The file it is on, or that it is on the whole change |
 | `notes` | How long the note is, and never a word of it |
-| `mail` | The subject of the Mailpit message it is on, which the tab already holds as its name |
 
 **The cases were chosen against a rule rather than by taste: nothing in a listing may cost a
 subprocess or a request.** The two temptations were a terminal's live working directory and what is
@@ -856,8 +855,8 @@ agent would like to use Bloom". None of that is true of the tools the agent brin
 
 The four pane tools are on the list because each adds or changes something the reader can see and
 undo, in the workspace whose agent is asking and nowhere else. `pane_close` refuses the two cases
-that would cost anything: it will not empty the centre column, and it cannot close the review, the
-notes or the mail, which a workspace has one of each and which hold what the reader is reading.
+that would cost anything: it will not empty the centre column, and it cannot close the review or
+the notes, which hold the reader's own work.
 
 `workspace_rename` is on it, and it is the entry that had to be argued against the quick prompt
 paragraph below rather than against the pane one above, because it overwrites something and keeps

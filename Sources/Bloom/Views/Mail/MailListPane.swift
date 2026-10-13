@@ -1,18 +1,12 @@
 import SwiftUI
 import BloomCore
 
-/// The inspector's Mail tab: Mailpit's mailbox, newest first, searchable, and live.
-///
-/// A click or Return opens the message in the workspace's mail tab in the centre column; the arrow
-/// keys walk the list and carry an open mail tab with them; Delete removes the selected message.
-/// What each of those does to the tab is `MailTab`, and what it does to the list is `Mailbox`.
+/// The list in the app-wide Mail destination: Mailpit's mailbox, newest first and live.
 ///
 /// Built the way `ChangedFileList` is, as a `ScrollView` of rows with `ListKeyboardHost` behind
 /// it, for the reason that list gives: a `List` brings drawing these rows would lose, and the
 /// keyboard is what the host is for.
 struct MailListPane: View {
-    let model: WorkspaceModel
-
     @Bindable private var mailbox = Mailbox.shared
     @State private var keyboard = ListKeyboard()
     @State private var hasKeyboard = false
@@ -38,7 +32,7 @@ struct MailListPane: View {
             }
 
             if let notice = mailbox.notice {
-                InspectorNotice(notice: notice) { mailbox.notice = nil }
+                PaneNotice(notice: notice) { mailbox.notice = nil }
                 Hairline()
             }
             // Whenever a list that has been read stops being live, whether or not it has rows. With
@@ -70,7 +64,7 @@ struct MailListPane: View {
             Button("Delete All", role: .destructive) { mailbox.deleteAll() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This empties the Mailpit at \(mailbox.address), which every workspace shares. It cannot be undone.")
+            Text("This empties the Mailpit at \(mailbox.address). It cannot be undone.")
         }
     }
 
@@ -153,7 +147,7 @@ struct MailListPane: View {
                     .contextMenu {
                         Button("Open") { activate(summary.id) }
                         Divider()
-                        Button("Delete", role: .destructive) { MailTab.delete(summary.id, in: model) }
+                        Button("Delete", role: .destructive) { mailbox.deleteAndSelectNext(summary.id) }
                     }
                     .onAppear {
                         if summary.id == list.messages.last?.id { mailbox.loadMore() }
@@ -194,14 +188,15 @@ struct MailListPane: View {
 
     private func activate(_ id: MailpitMessageID) {
         arm += 1
-        MailTab.open(id, in: model)
+        mailbox.select(id)
     }
 
     /// Return in the search field: the keyboard goes to the list, on the first row if nothing is
     /// selected yet.
     private func enterList() {
-        if mailbox.selection == nil, let first = mailbox.list.messages.first?.id {
-            MailTab.follow(first, in: model)
+        if mailbox.selection.map({ mailbox.list.contains($0) }) != true,
+           let first = mailbox.list.messages.first?.id {
+            mailbox.select(first)
         }
         arm += 1
     }
@@ -218,18 +213,18 @@ struct MailListPane: View {
         // Delete and Backspace arrive as characters, and type-select would otherwise take them as
         // the start of a word.
         if case .character(let character) = key, character == "\u{7F}" || character == "\u{08}" {
-            guard let selection = mailbox.selection else { return false }
-            MailTab.delete(selection, in: model)
+            guard let selection = mailbox.selection, index != nil else { return false }
+            mailbox.deleteAndSelectNext(selection)
             return true
         }
 
         switch keyboard.outcome(for: key, titles: messages.map(\.subject), current: index) {
         case .move(let row):
-            MailTab.follow(messages[row].id, in: model)
+            mailbox.select(messages[row].id)
             return true
         case .activate:
             guard let selection = mailbox.selection else { return false }
-            MailTab.open(selection, in: model)
+            mailbox.select(selection)
             return true
         case .handled:
             return true

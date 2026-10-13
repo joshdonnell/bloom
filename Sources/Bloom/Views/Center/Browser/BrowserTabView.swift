@@ -245,6 +245,11 @@ struct BrowserTabView: View {
                 guard let model else { return nil }
                 return BrowserTab.openExtensionTab(url, in: model)
             },
+            closeTab: { [weak model, tab] in
+                guard let model else { return false }
+                Task { await CenterTabStore.shared.close(tab, in: model) }
+                return true
+            },
             report: { [weak app] notice in
                 app?.alert = BloomAlert(title: notice.title, message: notice.message)
             }

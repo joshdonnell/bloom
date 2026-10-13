@@ -88,6 +88,17 @@ final class BrowserExtensionTab: NSObject, WKWebExtensionTab {
         completionHandler(nil)
     }
 
+    /// `tabs.remove`, which 1Password calls to close the sign in tab it opened once the account
+    /// is added. It threw "not implemented" until this existed. Closed the way the strip's own
+    /// close button closes a tab, through the pane drawing it.
+    func close(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        guard let session, session.host.closeTab() else {
+            completionHandler(BrowserExtensionError.cannotClose)
+            return
+        }
+        completionHandler(nil)
+    }
+
     func goBack(for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
         session?.goBack()
         completionHandler(nil)

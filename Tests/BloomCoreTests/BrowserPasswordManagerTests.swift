@@ -364,4 +364,36 @@ struct BrowserPasswordManagerTests {
             #expect(BrowserPasswordManager.crossing(to: url, showsExtensionPages: true, requestedByPage: true) == .stay)
         }
     }
+
+    // MARK: - The one native message answered
+
+    @Test("The lock monitor is told the Mac is active only while it is under the auto-lock time")
+    func theIdleQuestionIsAnsweredTruthfully() {
+        let data = #"{"maximumIdleTimeInSeconds":28800}"#
+        let name = BrowserPasswordManager.activeStatusMessage
+        #expect(BrowserPasswordManager.nativeReply(name: name, data: data, idleSeconds: 40) == .reply("active"))
+        #expect(BrowserPasswordManager.nativeReply(name: name, data: data, idleSeconds: 28800) == .reply("idle"))
+        #expect(BrowserPasswordManager.nativeReply(name: name, data: data, idleSeconds: 90000) == .reply("idle"))
+    }
+
+    @Test("A status query that cannot be read is answered idle, so the vault locks rather than stays open")
+    func anUnreadableQueryLocks() {
+        let name = BrowserPasswordManager.activeStatusMessage
+        let unreadable: [String?] = [
+            nil, "", "not json", "{}", #"{"maximumIdleTimeInSeconds":"soon"}"#, #"{"maximumIdleTimeInSeconds":0}"#,
+        ]
+        for data in unreadable {
+            #expect(BrowserPasswordManager.nativeReply(name: name, data: data, idleSeconds: 0) == .reply("idle"))
+        }
+        let limit = #"{"maximumIdleTimeInSeconds":28800}"#
+        #expect(BrowserPasswordManager.nativeReply(name: name, data: limit, idleSeconds: .infinity) == .reply("idle"))
+        #expect(BrowserPasswordManager.nativeReply(name: name, data: limit, idleSeconds: -1) == .reply("idle"))
+    }
+
+    @Test("Every other native message is refused, as it is with no native side at all")
+    func otherNativeMessagesAreRefused() {
+        for name: String? in ["core", "request-os-version", "copy-to-clipboard", "d-secret-proxy", nil] {
+            #expect(BrowserPasswordManager.nativeReply(name: name, data: "{}", idleSeconds: 0) == .unsupported)
+        }
+    }
 }

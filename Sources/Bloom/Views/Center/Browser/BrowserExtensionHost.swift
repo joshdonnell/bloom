@@ -13,17 +13,17 @@ import BloomCore
 /// so switching the setting on reaches tabs opened afterwards and switching it off unloads the
 /// extension from every tab at once.
 ///
-/// **Native messaging is not implemented, and cannot be.** With neither delegate method present
-/// WebKit tries to hand the extension's messages to 1Password's own appex handler through
-/// `NSExtension`, the way Safari does, and that lookup finds nothing from any process but
-/// Safari's: discovering a Safari web extension takes `com.apple.private.extension-host.safari-extension`,
-/// a private entitlement no third party app can hold. Measured on macOS 27 with a bare command
-/// line probe, which found zero Safari web extensions and nineteen share extensions. So the
-/// extension cannot reach the 1Password app here, and has to be signed in to the account by
-/// itself, with the account's Secret Key. **Whether 1Password allows that sign in outside Safari
-/// has not been confirmed**, so this may load, draw its button and still never fill anything.
-/// The methods stay unimplemented so that the day Apple opens this up, the fallback starts
-/// working without a change here.
+/// **Native messaging cannot reach 1Password's own handler, so Bloom answers one message itself.**
+/// In Safari the extension's native messages go to 1Password's appex handler through
+/// `NSExtension`, and that lookup finds nothing from any process but Safari's: discovering a Safari
+/// web extension takes `com.apple.private.extension-host.safari-extension`, a private entitlement
+/// no third party app can hold. Measured on macOS 27 with a bare command line probe, which found
+/// zero Safari web extensions and nineteen share extensions. So the extension cannot reach the
+/// 1Password app here, and is signed in to the account by itself, with the account's Secret Key,
+/// which was confirmed to work under Bloom Dev. The one native question it cannot do without is
+/// whether the person is still at the Mac, which its lock monitor asks the moment the vault
+/// unlocks and locks it again on any failure, so `sendMessage` below answers that one and refuses
+/// the rest. See `BrowserPasswordManager+Native`.
 ///
 /// **Every permission the extension asks for is granted without a prompt.** The switch in Settings
 /// is the consent, and its footnote says so: it names one extension, from one vendor, which the
@@ -171,6 +171,13 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
             guard lifecycle.isCurrent(attempt) else { return }
             let context = WKWebExtensionContext(for: webExtension)
             context.baseURL = BrowserPasswordManager.extensionBaseURL
+            #if DEBUG
+            // Safari's Develop menu can attach to the background page and the popup in a debug
+            // build, which is the only way to read what 1Password itself says went wrong: its
+            // console reaches the unified log redacted. Never in a release, where it would put a
+            // signed in vault's background page in front of any inspector on this Mac.
+            context.isInspectable = true
+            #endif
             context.uniqueIdentifier = BrowserPasswordManager.runtimeIdentifier(
                 bundleIdentifier: bundle.bundleIdentifier ?? found.identifier,
                 teamIdentifier: BrowserPasswordManager.signingTeam
@@ -376,6 +383,30 @@ final class BrowserExtensionHost: NSObject, WKWebExtensionControllerDelegate {
         completionHandler: @escaping (Set<URL>, Date?) -> Void
     ) {
         completionHandler(urls, nil)
+    }
+
+    /// `browser.runtime.sendNativeMessage`. One message is answered, the lock monitor's question
+    /// about whether the Mac is idle, from the system's own idle time; every other one fails, as
+    /// it would with no handler at all. The decision is `BrowserPasswordManager.nativeReply`.
+    func webExtensionController(
+        _ controller: WKWebExtensionController,
+        sendMessage message: Any,
+        toApplicationWithIdentifier applicationIdentifier: String?,
+        for extensionContext: WKWebExtensionContext,
+        replyHandler: @escaping (Any?, (any Error)?) -> Void
+    ) {
+        let fields = message as? [String: Any]
+        // Any input at all, which is the one event type CoreGraphics has no case for.
+        let anyInput = CGEventType(rawValue: ~0)
+        let idle = anyInput.map {
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0)
+        } ?? .infinity
+        switch BrowserPasswordManager.nativeReply(
+            name: fields?["name"] as? String, data: fields?["data"] as? String, idleSeconds: idle
+        ) {
+        case .reply(let answer): replyHandler(answer, nil)
+        case .unsupported: replyHandler(nil, BrowserExtensionError.noNativeMessaging)
+        }
     }
 
     func webExtensionController(

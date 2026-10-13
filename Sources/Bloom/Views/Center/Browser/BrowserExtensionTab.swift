@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import BloomCore
 
 /// A Bloom browser tab as a web extension sees it.
 ///
@@ -65,6 +66,13 @@ final class BrowserExtensionTab: NSObject, WKWebExtensionTab {
     func loadURL(
         _ url: URL, for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void
     ) {
+        // The same addresses the extension may open a new tab on, and no others. `load` also opens
+        // pages out of the worktree, which is for the reader typing a path and not for an
+        // extension, and handing it the URL unchecked would give 1Password that door as well.
+        guard BrowserPasswordManager.mayOpenTab(url) else {
+            completionHandler(BrowserExtensionError.cannotLoad)
+            return
+        }
         // Through the session rather than straight to the web view, because the extension sends
         // tabs between its own pages and the web, which takes a web view of the other kind. See
         // `BrowserPasswordManager.crossing`.

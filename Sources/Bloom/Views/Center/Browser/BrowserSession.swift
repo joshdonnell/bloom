@@ -135,6 +135,11 @@ final class BrowserSession {
     /// `BrowserPasswordManager.crossing`.
     @ObservationIgnored private var showsExtensionPages = false
 
+    /// Set by `stop`. A closed tab can still be reached by the extension's waiting list or by a
+    /// navigation decision that was in flight as it closed, and either would otherwise give it a
+    /// new web view and report it to 1Password as an open tab again.
+    @ObservationIgnored private var isStopped = false
+
     /// KVO on everything the toolbar reads, because the navigation delegate does not see every
     /// navigation.
     ///
@@ -304,7 +309,7 @@ final class BrowserSession {
     /// with the switch off had none at all, which left the page loaded with no 1Password button
     /// and invisible to `tabs.query`.
     func adoptExtension(configuration: WKWebViewConfiguration) {
-        guard awaitsExtension, let address = currentURL else { return }
+        guard !isStopped, awaitsExtension, let address = currentURL else { return }
         awaitsExtension = false
         replaceWebView(configuration: configuration, showsExtensionPages: true)
         failure = nil
@@ -335,6 +340,7 @@ final class BrowserSession {
     /// Out to the web from one of 1Password's own pages, whose web view will not go. This is
     /// 1Password's Sign in, which sends its welcome page to `start.1password.com`.
     func leaveExtensionPages(for url: URL) {
+        guard !isStopped else { return }
         replaceWebView(configuration: WKWebViewConfiguration(), showsExtensionPages: false)
         failure = nil
         webView.load(URLRequest(url: url))
@@ -841,6 +847,7 @@ final class BrowserSession {
     }
 
     func stop() {
+        isStopped = true
         observations = []
         // A question put to a page whose tab has gone. Nothing would come back through it, and a
         // sleeping task holding this session is one more thing keeping a closed web view alive.

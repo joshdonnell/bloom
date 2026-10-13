@@ -5,10 +5,12 @@ import Foundation
 enum BrowserExtensionError: LocalizedError {
     case cannotOpenTab
     case cannotShowPopup
+    case cannotLoad
 
     var errorDescription: String? {
         switch self {
         case .cannotOpenTab: "Bloom could not open a tab for the extension."
+        case .cannotLoad: "Bloom does not open that address for the extension."
         case .cannotShowPopup: "Bloom had nowhere on screen to show the extension's popup."
         }
     }

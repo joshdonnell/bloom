@@ -120,7 +120,9 @@ public enum BrowserPasswordManager {
     /// 1Password before saying it was found.
     ///
     /// Here rather than in the host because checking a signature hashes every file in the appex,
-    /// and this runs off the main actor where the host does not.
+    /// and this runs off the main actor where the host does not. `@concurrent` says so outright,
+    /// rather than leaning on a default that a future language setting would change.
+    @concurrent
     public static func locate() async -> Lookup {
         do {
             let result = try await Shell.run(

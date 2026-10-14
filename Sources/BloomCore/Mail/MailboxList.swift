@@ -49,7 +49,7 @@ public struct MailboxList: Equatable, Sendable {
 
     /// What the delete-all confirmation asks, naming the number it is about to remove.
     public var deleteAllQuestion: String {
-        "Delete \(total == 1 ? "the 1 message" : "all \(total) messages") in Mailpit?"
+        total == 1 ? "Delete the only message?" : "Delete all \(total) messages?"
     }
 
     private static func count(_ number: Int, _ noun: String) -> String {

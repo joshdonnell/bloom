@@ -48,7 +48,7 @@ struct MailPaneView: View {
                     EmptyStateView(
                         glyph: "trash",
                         title: "Message deleted",
-                        message: "This message is no longer in Mailpit. Pick another from the list."
+                        message: "This message is no longer in the inbox. Pick another from the list."
                     )
                 case .failed(let failure):
                     EmptyStateView(

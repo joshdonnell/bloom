@@ -12,8 +12,8 @@ public enum MailpitSettings {
     public static let enabledKey = "mailpit.enabled"
     public static let addressKey = "mailpit.address"
 
-    /// Off until somebody switches it on in Settings > Mail. On by default, Bloom would knock on a
-    /// port on every Mac it runs on, every thirty seconds, for a tool most of them do not have, and
+    /// Off until somebody switches it on in Settings > Incoming mails. On by default, Bloom would
+    /// knock on a port on every Mac every thirty seconds, for a tool most people do not have, and
     /// Mail would turn up unasked in the sidebar.
     public static let isOnByDefault = false
     public static let defaultAddress = "http://localhost:8025"

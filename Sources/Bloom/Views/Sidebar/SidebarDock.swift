@@ -18,7 +18,7 @@ struct SidebarDock: View {
 
     private var mailButton: some View {
         Button { app.selection = .mail } label: {
-            Label("Mail", systemImage: "envelope")
+            Label("Incoming mails", systemImage: "envelope")
                 .labelStyle(.iconOnly)
                 .font(Typo.label)
                 .foregroundStyle(app.selection == .mail ? Palette.accent : Palette.textSecondary)
@@ -55,7 +55,7 @@ struct SidebarDock: View {
 
     private var mailHelp: String {
         let unread = Mailbox.shared.list.unread
-        return unread == 0 ? "Mail" : "Mail, \(unread) unread"
+        return unread == 0 ? "Incoming mails" : "Incoming mails, \(unread) unread"
     }
 
     private var isShowingArchive: Bool {

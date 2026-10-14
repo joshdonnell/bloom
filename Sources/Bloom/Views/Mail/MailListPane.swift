@@ -22,7 +22,7 @@ struct MailListPane: View {
                 query: $mailbox.query,
                 onEscape: { mailbox.query = "" },
                 onReturn: enterList,
-                placeholder: "Search mail"
+                placeholder: "Search incoming mails"
             )
             Hairline()
 
@@ -36,8 +36,8 @@ struct MailListPane: View {
                 Hairline()
             }
             // Whenever a list that has been read stops being live, whether or not it has rows. With
-            // none, "No mail" under no band read as a mailbox waiting for mail that could not
-            // arrive. Before the first read the empty state below says it instead, and a password
+            // none, "No incoming mails" under no band read as a mailbox waiting for mail that
+            // could not arrive. Before the first read the empty state below says it instead, and a password
             // prompt has a state of its own.
             if case .disconnected(let failure) = mailbox.connection, failure != .unauthorised, mailbox.hasReadList {
                 disconnected(failure)
@@ -65,7 +65,7 @@ struct MailListPane: View {
             Button("Delete All", role: .destructive) { mailbox.deleteAll() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This empties the Mailpit at \(mailbox.address). It cannot be undone.")
+            Text("This deletes every message from the connected inbox at \(mailbox.address). It cannot be undone.")
         }
     }
 
@@ -86,7 +86,7 @@ struct MailListPane: View {
                 .buttonStyle(.borderless)
                 .controlSize(.small)
                 .foregroundStyle(Palette.negative)
-                .help("Delete every message in Mailpit, after asking")
+                .help("Delete every incoming message, after asking")
         }
         .padding(.horizontal, InspectorLayout.inset)
         .frame(height: InspectorLayout.barHeight)
@@ -98,36 +98,36 @@ struct MailListPane: View {
         if case .disconnected(.unauthorised) = mailbox.connection {
             EmptyStateView(
                 glyph: "lock",
-                title: "Mailpit wants a password",
+                title: "Inbox requires a password",
                 message: MailpitFailure.unauthorised.message,
-                actionTitle: "Mail Settings",
+                actionTitle: "Incoming mail settings",
                 action: showSettings
             )
         } else if list.messages.isEmpty, !mailbox.hasReadList {
             if case .disconnected(let failure) = mailbox.connection {
                 EmptyStateView(
                     glyph: "envelope.badge.shield.half.filled",
-                    title: "Can't reach Mailpit",
-                    message: "\(failure.message) Bloom is looking for it at \(mailbox.address) and will keep trying.",
+                    title: "Can't connect to the inbox",
+                    message: "\(failure.message) Bloom will retry at \(mailbox.address).",
                     actionTitle: "Try Again",
                     action: mailbox.retry
                 )
             } else {
-                LoadingView("Reading the mailbox")
+                LoadingView("Loading incoming mails")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else if list.messages.isEmpty {
             if list.query.isEmpty {
                 EmptyStateView(
                     glyph: "tray",
-                    title: "No mail",
-                    message: "Mail your app sends to the Mailpit at \(mailbox.address) appears here as it arrives."
+                    title: "No incoming mails",
+                    message: "Messages your app sends to the connected test inbox appear here."
                 )
             } else {
                 EmptyStateView(
                     glyph: "magnifyingglass",
-                    title: "No mail matches",
-                    message: "Nothing in Mailpit matches \(list.query)."
+                    title: "No matches",
+                    message: "No incoming mails match \(list.query)."
                 )
             }
         } else {
@@ -171,7 +171,7 @@ struct MailListPane: View {
         HStack(spacing: InspectorLayout.gap) {
             ProgressView()
                 .controlSize(.mini)
-            Text("Disconnected from Mailpit, retrying")
+            Text("Inbox disconnected, retrying")
                 .font(Typo.caption)
                 .foregroundStyle(Palette.textSecondary)
                 .lineLimit(1)

@@ -28,7 +28,7 @@ enum SettingsTab: String, Hashable, CaseIterable {
         case .terminal: "Terminal"
         case .browserAccess: "Browser Access"
         case .commandLine: "Command Line"
-        case .mail: "Mail"
+        case .mail: "Incoming mails"
         }
     }
 

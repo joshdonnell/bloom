@@ -251,7 +251,7 @@ final class Mailbox {
             // Said only over a live list. A disconnected one already has its band saying why, and
             // a notice per search typed into it would be the same sentence again.
             if let failure = await reloadFirstPage(from: client), connection == .live {
-                notice = PaneNoticeContent(tone: .failure, title: "Could not search the mail", message: failure.message)
+                notice = PaneNoticeContent(tone: .failure, title: "Could not search incoming mails", message: failure.message)
             }
         }
     }
@@ -352,7 +352,7 @@ final class Mailbox {
         selection = nil
         Task {
             guard case .failure(let failure) = await client.deleteAll(), isCurrent(client) else { return }
-            notice = PaneNoticeContent(tone: .failure, title: "Could not delete the mail", message: failure.message)
+            notice = PaneNoticeContent(tone: .failure, title: "Could not delete incoming mails", message: failure.message)
             await reloadFirstPage(from: client)
         }
     }

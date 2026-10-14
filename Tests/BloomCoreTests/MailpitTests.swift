@@ -464,11 +464,11 @@ struct MailboxListTests {
         var list = MailboxList()
         list.adopt(page(["a"], matching: 1, unread: 0, total: 1), query: "")
         #expect(list.countLine == "1 message")
-        #expect(list.deleteAllQuestion == "Delete the 1 message in Mailpit?")
+        #expect(list.deleteAllQuestion == "Delete the only message?")
 
         list.adopt(page(["a", "b"], matching: 12, unread: 3, total: 12), query: "")
         #expect(list.countLine == "12 messages, 3 unread")
-        #expect(list.deleteAllQuestion == "Delete all 12 messages in Mailpit?")
+        #expect(list.deleteAllQuestion == "Delete all 12 messages?")
 
         list.adopt(page(["a"], matching: 2, unread: 3, total: 12), query: "subject:verify")
         #expect(list.countLine == "2 matching, of 12 messages")
@@ -631,7 +631,7 @@ struct MailpitStatusLineTests {
     @Test("switched off, it says so whatever the address says")
     func off() {
         let link = MailboxLink(isEnabled: false)
-        #expect(link.statusLine(isEnabled: false, typed: "nonsense", following: address) == "Off. Bloom does not look for Mailpit until this is switched on.")
+        #expect(link.statusLine(isEnabled: false, typed: "nonsense", following: address) == "Off. Bloom will connect when incoming mails are switched on.")
     }
 
     @Test("an address that is not one is said to be so")
@@ -648,15 +648,15 @@ struct MailpitStatusLineTests {
         _ = link.probed(.success(info))
         link.listening()
         let line = link.statusLine(isEnabled: true, typed: "http://localhost:9025", following: address)
-        #expect(line == "Looking for Mailpit at this address.")
+        #expect(line == "Connecting to the inbox at this address.")
     }
 
-    @Test("connected says where Mail is")
+    @Test("connected says where Incoming mails is")
     func connected() {
         var link = MailboxLink(isEnabled: true)
         _ = link.probed(.success(info))
         link.listening()
-        #expect(link.statusLine(isEnabled: true, typed: address, following: address) == "Connected. Mail is in the sidebar.")
+        #expect(link.statusLine(isEnabled: true, typed: address, following: address) == "Connected. Open Incoming mails from the sidebar footer.")
     }
 
     @Test("a failure says what happened and that Bloom will retry")
@@ -665,7 +665,7 @@ struct MailpitStatusLineTests {
         _ = never.probed(.failure(.unreachable))
         #expect(
             never.statusLine(isEnabled: true, typed: address, following: address)
-                == "Nothing answered at this address. Bloom will keep trying."
+                == "The inbox did not answer at this address. Bloom will keep trying."
         )
 
         var dropped = MailboxLink(isEnabled: true)
@@ -673,7 +673,7 @@ struct MailpitStatusLineTests {
         _ = dropped.dropped(.unreachable)
         #expect(
             dropped.statusLine(isEnabled: true, typed: address, following: address)
-                == "Nothing answered at this address. Bloom will keep trying."
+                == "The inbox did not answer at this address. Bloom will keep trying."
         )
     }
 }

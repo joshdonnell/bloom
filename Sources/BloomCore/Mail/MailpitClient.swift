@@ -17,11 +17,11 @@ public enum MailpitFailure: Error, Equatable, Sendable {
 
     public var message: String {
         switch self {
-        case .unreachable: "Nothing answered at this address."
-        case .unauthorised: "This Mailpit requires a password, which Bloom does not support yet."
+        case .unreachable: "The inbox did not answer at this address."
+        case .unauthorised: "This inbox requires a password, which Bloom cannot use yet."
         case .notFound: "The message has been deleted."
-        case .status(let code): "Mailpit answered with HTTP \(code)."
-        case .undecodable: "Something answered at this address, but it does not look like Mailpit."
+        case .status(let code): "The inbox returned HTTP \(code)."
+        case .undecodable: "This address does not provide a compatible inbox."
         }
     }
 }

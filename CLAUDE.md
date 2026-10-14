@@ -264,8 +264,8 @@ directory per region of the window (`Sidebar`, `Center`, `Inspector`, `Home`, `T
 two that outgrew a single directory are split by what they are for rather than by what they are:
 `Center/Composer`, `Center/Panes`, `Center/Attachments`, `Center/Browser`; `Chrome/Window`,
 `Chrome/Settings`, `Chrome/MenuBar`, `Chrome/App`, `Chrome/Feedback`, `Chrome/Notices`.
-`Mail` is an app-wide destination in the sidebar. Its list and reader share one connection to
-Mailpit, so they live together rather than under workspace panes.
+`Incoming mails` is an app-wide destination opened from the sidebar footer. Its list and reader
+share one connection to Mailpit, so they live together rather than under workspace panes.
 
 Four directories sit beside `Views/` and are not panes, because none of them is drawn in one
 place. `Design/` is the theme and the snapshot galleries, `State/` is `AppModel` with its

@@ -69,6 +69,7 @@ struct MailPaneView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.surface)
         .task(id: Ask(message: mailbox.selection, removals: mailbox.removals)) {
             guard let id = mailbox.selection else { return }

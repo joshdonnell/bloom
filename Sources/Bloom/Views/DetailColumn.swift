@@ -42,6 +42,9 @@ struct DetailColumn: View {
                     .environment(\.workspaceColumnActivity, activity)
                     .allowsHitTesting(isActive)
                     .accessibilityHidden(!isActive)
+                    // Mail replaced the centre column, but a short Mail view let these retained
+                    // tabs and the composer show through above and below it.
+                    .opacity(app.selection == .mail ? 0 : 1)
                     .zIndex(isActive ? 1 : 0)
                     .overlay {
                         if isActive, app.isArchiving(id) { ArchiveInteractionShield() }

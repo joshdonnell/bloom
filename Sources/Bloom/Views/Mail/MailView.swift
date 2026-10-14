@@ -1,16 +1,24 @@
 import SwiftUI
 
-/// The app's Mailpit inbox. One server is configured for Bloom, so its messages have one
-/// destination outside the workspace inspector.
+/// The app's Mailpit inbox, opened from the sidebar footer. One server is configured for Bloom,
+/// so its messages have one destination outside the workspace inspector.
 struct MailView: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        HSplitView {
-            MailListPane()
-                .frame(minWidth: 280, idealWidth: 340, maxWidth: 480)
-            MailPaneView()
-                .frame(minWidth: 360, maxWidth: .infinity)
+        GeometryReader { geometry in
+            let listWidth = min(420, max(300, geometry.size.width * 0.36))
+
+            HStack(spacing: 0) {
+                MailListPane()
+                    .frame(width: listWidth, height: geometry.size.height)
+                Hairline(axis: .vertical)
+                    .frame(height: geometry.size.height)
+                MailPaneView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .background(Palette.surface)
         }
         .background(Palette.surface)
         .onChange(of: Mailbox.shared.link.presence.isEnabled) { _, enabled in

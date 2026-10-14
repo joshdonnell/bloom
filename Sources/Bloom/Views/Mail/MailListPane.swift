@@ -53,6 +53,7 @@ struct MailListPane: View {
             }
             .listKeyboard(hasKeyboard: $hasKeyboard, armToken: arm, onKey: handle)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: hasKeyboard) { _, focused in
             if !focused { keyboard.forgetTyping() }
         }

@@ -100,6 +100,18 @@ struct MailpitAddressTests {
     func defaultParses() {
         #expect(MailpitSettings.base(from: MailpitSettings.defaultAddress) != nil)
     }
+
+    @Test("the bundled server keeps production and development ports separate")
+    func bundledPorts() {
+        #expect(MailpitSettings.bundledPorts(forBundleIdentifier: Store.primaryBundleIdentifier)
+            == .init(smtp: 1025, api: 8025))
+        #expect(MailpitSettings.bundledPorts(forBundleIdentifier: Store.devBundleIdentifier)
+            == .init(smtp: 1026, api: 8026))
+        #expect(MailpitSettings.bundledPorts(forBundleIdentifier: nil)
+            == .init(smtp: 1026, api: 8026))
+        #expect(MailpitSettings.bundledAddress(forBundleIdentifier: Store.devBundleIdentifier)
+            == "http://127.0.0.1:8026")
+    }
 }
 
 // MARK: - Decoding

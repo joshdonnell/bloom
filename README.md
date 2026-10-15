@@ -47,6 +47,14 @@ Useful shortcuts include Cmd+N for a new workspace, Cmd+J for a project-free con
 Cmd+P to search files in the current project workspace. See [the menu reference](docs/MENUS.md)
 for the full list.
 
+### Incoming mails
+
+In **Settings > Incoming mails**, enable the built-in inbox. Point your local app's SMTP host to
+`127.0.0.1` and port to `1025`, with no encryption or authentication. Bloom Dev uses port `1026` so
+it can run beside the regular app. The inbox runs while Bloom is open and keeps its messages in
+Bloom's application data between launches. The sidebar footer opens the message list. You can
+choose **Existing server** in Settings if your projects already send to another test inbox.
+
 ### Browser access (alpha)
 
 Browser access is in alpha and may change or be removed at any time. Bloom can show conversations

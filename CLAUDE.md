@@ -31,6 +31,10 @@ line as the core.
 `Sources/bloom-sleep-helper` is a separate privileged helper for Keep Awake. It does not
 import a UI framework. `BloomCoreTests` exercises the core module.
 
+`Sources/bloom-mail-server` supervises the bundled test inbox. Its stdin pipe is held by Bloom;
+EOF stops the server after a clean quit or crash. `Tools/mailpit-binary.sh` verifies the pinned
+release archive before `Tools/build.sh` puts the binary and licence into the signed app bundle.
+
 `make lint` holds that line for both, and it looks for the framework rather than for a literal,
 because `import Cocoa` re-exports the whole of AppKit and `import class AppKit.NSView` names
 AppKit without containing the words next to each other. SwiftTerm and Sparkle need no rule: only
@@ -265,7 +269,9 @@ two that outgrew a single directory are split by what they are for rather than b
 `Center/Composer`, `Center/Panes`, `Center/Attachments`, `Center/Browser`; `Chrome/Window`,
 `Chrome/Settings`, `Chrome/MenuBar`, `Chrome/App`, `Chrome/Feedback`, `Chrome/Notices`.
 `Incoming mails` is an app-wide destination opened from the sidebar footer. Its list and reader
-share one connection to Mailpit, so they live together rather than under workspace panes.
+share one connection to Mailpit, so they live together rather than under workspace panes. By
+default Bloom starts the bundled server on loopback when the feature is enabled. Dev uses separate
+ports and application data. An existing inbox URL remains available in Settings.
 
 Four directories sit beside `Views/` and are not panes, because none of them is drawn in one
 place. `Design/` is the theme and the snapshot galleries, `State/` is `AppModel` with its

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send three local test messages to Mailpit's SMTP listener."""
+"""Send three local test messages to Bloom's incoming mail inbox."""
 
 import argparse
 import smtplib
@@ -16,13 +16,13 @@ def message(subject: str, recipient: str) -> EmailMessage:
 
 def examples() -> list[EmailMessage]:
     plain = message("Bloom demo: plain text", "plain@example.test")
-    plain.set_content("This is a plain text message sent to Mailpit for testing Bloom.\n")
+    plain.set_content("This is a plain text message sent to the built-in inbox for testing Bloom.\n")
 
     html = message("Bloom demo: HTML and link", "html@example.test")
     html.set_content("Open https://example.com to test a link from a message.\n")
     html.add_alternative(
         '<html><body style="font-family: system-ui; padding: 24px">'
-        '<h1>Bloom Mailpit demo</h1><p>This message has an HTML body.</p>'
+        '<h1>Bloom incoming mail demo</h1><p>This message has an HTML body.</p>'
         '<p><a href="https://example.com">Open a test link</a></p>'
         '</body></html>',
         subtype="html",

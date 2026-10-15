@@ -26,6 +26,8 @@ final class Mailbox {
     private(set) var isLoadingPage = false
     /// What Settings holds, as typed, for the sentences that name it.
     private(set) var address = MailpitSettings.defaultAddress
+    private(set) var usesBundledServer = MailpitSettings.usesBundledServerByDefault
+    private(set) var bundledError: String?
     private(set) var client: MailpitClient?
     /// The row selected in Mail's list. One for the app, like the list it is a row of.
     private(set) var selection: MailpitMessageID?
@@ -53,6 +55,8 @@ final class Mailbox {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var search: Task<Void, Never>?
     @ObservationIgnored private var settingsChange: Task<Void, Never>?
+    @ObservationIgnored private var externalAddress = MailpitSettings.defaultAddress
+    @ObservationIgnored private let bundledServer = BundledMailServer()
 
     private init() {
         link = MailboxLink(isEnabled: Self.storedEnabled)
@@ -64,16 +68,15 @@ final class Mailbox {
     func start() {
         guard !started else { return }
         started = true
-        // Mailpit is usually started in a terminal, and the person who started it then comes back
-        // here. Coming to the front is the moment to look, rather than whenever the next thirty
-        // seconds are up.
+        // An existing server may have been started after Bloom. Coming to the front is the moment
+        // to look, rather than waiting for the next background probe.
         // swiftlint:disable:next discarded_notification_center_observer
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { _ in
             MainActor.assumeIsolated { Mailbox.shared.lookAgainIfDown() }
         }
-        // Settings > Mail writes the two defaults, and this is the one place that hears them,
+        // Settings > Incoming mails writes the defaults, and this is the one place that hears them,
         // rather than a pair of `onChange` handlers in the view that every other place editing
         // them would have to repeat.
         // swiftlint:disable:next discarded_notification_center_observer
@@ -81,6 +84,14 @@ final class Mailbox {
             forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
         ) { _ in
             MainActor.assumeIsolated { Mailbox.shared.settingsChanged() }
+        }
+        // Closing the pipe lets the supervisor stop its server on a clean quit. The same EOF is
+        // delivered by the system if Bloom crashes.
+        // swiftlint:disable:next discarded_notification_center_observer
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { Mailbox.shared.bundledServer.stop() }
         }
         // Read again rather than trusting `init`: the sidebar can build this model before
         // bootstrap starts it, and Settings may have moved in between.
@@ -96,7 +107,9 @@ final class Mailbox {
     /// typed back to what it was, or a switch flipped and flipped back inside it, is no change, and
     /// restarting for it would replace a working connection with a search.
     private func settingsChanged() {
-        guard Self.storedEnabled != link.presence.isEnabled || Self.storedAddress != address else {
+        guard Self.storedEnabled != link.presence.isEnabled
+                || Self.storedBundled != usesBundledServer
+                || Self.storedAddress != externalAddress else {
             settingsChange?.cancel()
             settingsChange = nil
             return
@@ -106,7 +119,9 @@ final class Mailbox {
             try? await Task.sleep(for: .milliseconds(600))
             let isEnabled = Self.storedEnabled
             guard !Task.isCancelled,
-                  isEnabled != link.presence.isEnabled || Self.storedAddress != address else { return }
+                  isEnabled != link.presence.isEnabled
+                    || Self.storedBundled != usesBundledServer
+                    || Self.storedAddress != externalAddress else { return }
             link.reconfigure(isEnabled: isEnabled)
             restart()
         }
@@ -124,7 +139,13 @@ final class Mailbox {
 
     private func restart() {
         loop?.cancel()
-        address = Self.storedAddress
+        externalAddress = Self.storedAddress
+        usesBundledServer = Self.storedBundled
+        address = usesBundledServer
+            ? MailpitSettings.bundledAddress(forBundleIdentifier: Bundle.main.bundleIdentifier)
+            : externalAddress
+        if !link.presence.isEnabled || !usesBundledServer { bundledServer.stop() }
+        bundledError = nil
         let previous = client?.base
         let client = MailpitSettings.base(from: address).map { MailpitClient(base: $0) }
         // Off means off: with no client the reader stops fetching too.
@@ -153,12 +174,29 @@ final class Mailbox {
     /// steps is `MailboxLink`'s.
     private func run(_ client: MailpitClient) async {
         while !Task.isCancelled {
+            if usesBundledServer {
+                do {
+                    try bundledServer.start(ports: MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier))
+                } catch {
+                    bundledError = error.localizedDescription
+                    _ = link.probed(.failure(.unreachable))
+                    try? await Task.sleep(for: .seconds(2))
+                    continue
+                }
+            }
             let answer = await client.info()
             // **Cancelled while the request was out means a restart has already begun**, for a new
             // address or with the switch off. Without this the old loop landed its answer on the
             // new state: it marked an address that had never answered as answered and set the
             // connection beside it.
             guard !Task.isCancelled else { return }
+            if usesBundledServer {
+                if case .success = answer {
+                    bundledError = nil
+                } else if !bundledServer.isRunning {
+                    bundledError = "The built-in inbox stopped while starting. Try again or choose Existing server."
+                }
+            }
             let pause: Duration
             switch link.probed(answer) {
             case .listen:
@@ -166,7 +204,10 @@ final class Mailbox {
                 guard !Task.isCancelled else { return }
                 pause = link.dropped(dropped)
             case .wait(let wait):
-                pause = wait
+                // The bundled process may still be opening its listeners on the first probe.
+                // A missing external server keeps the slower search interval, but our own gets
+                // another look promptly after startup or a crash.
+                pause = usesBundledServer ? .seconds(1) : wait
             }
             do {
                 try await Task.sleep(for: pause)
@@ -411,9 +452,14 @@ final class Mailbox {
 
     // MARK: - Settings
 
-    /// The sentence under the address field. See `MailboxLink.statusLine`.
-    func statusLine(isEnabled: Bool, address typed: String) -> String {
-        link.statusLine(isEnabled: isEnabled, typed: typed, following: address)
+    /// The sentence under the source settings.
+    func statusLine(isEnabled: Bool, usesBundledServer: Bool, address typed: String) -> String {
+        guard !usesBundledServer else {
+            if !isEnabled { return "Off. Bloom will start the inbox when incoming mails are switched on." }
+            if let bundledError { return bundledError }
+            return connection == .live ? "Ready to receive incoming mails." : "Starting the inbox."
+        }
+        return link.statusLine(isEnabled: isEnabled, typed: typed, following: address)
     }
 
     private static var storedEnabled: Bool {
@@ -422,5 +468,10 @@ final class Mailbox {
 
     private static var storedAddress: String {
         UserDefaults.standard.string(forKey: MailpitSettings.addressKey) ?? MailpitSettings.defaultAddress
+    }
+
+    private static var storedBundled: Bool {
+        UserDefaults.standard.object(forKey: MailpitSettings.bundledKey) as? Bool
+            ?? MailpitSettings.usesBundledServerByDefault
     }
 }

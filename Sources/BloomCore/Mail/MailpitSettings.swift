@@ -1,20 +1,42 @@
 import Foundation
 
-/// Where Bloom looks for Mailpit, and whether it looks at all.
+/// The app-owned inbox ports, or the address of an existing inbox.
 ///
-/// One address for the whole Mac rather than one per project. The common setup is a single Mailpit
-/// that Herd, DBngin or `brew services` keeps running on `localhost:8025`, and every project on the
-/// machine sends to it, so the default address is right for most people once the switch is on.
+/// One source for the whole app rather than one per project. The built-in server is the default;
+/// the address setting is kept for a server already running elsewhere.
 ///
 /// The keys are here rather than in the settings pane so that the pane's `@AppStorage` and the
 /// `Mailbox` reading them at launch cannot disagree about a spelling.
 public enum MailpitSettings {
     public static let enabledKey = "mailpit.enabled"
     public static let addressKey = "mailpit.address"
+    public static let bundledKey = "mailpit.bundled"
+    public static let usesBundledServerByDefault = true
 
-    /// Off until somebody switches it on in Settings > Incoming mails. On by default, Bloom would
-    /// knock on a port on every Mac every thirty seconds, for a tool most people do not have, and
-    /// Mail would turn up unasked in the sidebar.
+    public struct Ports: Equatable, Sendable {
+        public let smtp: Int
+        public let api: Int
+
+        public init(smtp: Int, api: Int) {
+            self.smtp = smtp
+            self.api = api
+        }
+    }
+
+    /// The Dev app gets different ports, so it cannot claim the production app's listeners.
+    /// An unbundled run is treated as development for the same reason.
+    public static func bundledPorts(forBundleIdentifier identifier: String?) -> Ports {
+        identifier == Store.primaryBundleIdentifier
+            ? Ports(smtp: 1025, api: 8025)
+            : Ports(smtp: 1026, api: 8026)
+    }
+
+    public static func bundledAddress(forBundleIdentifier identifier: String?) -> String {
+        "http://127.0.0.1:\(bundledPorts(forBundleIdentifier: identifier).api)"
+    }
+
+    /// Off until somebody switches it on in Settings > Incoming mails. The bundled server should
+    /// not open an SMTP port, or add a sidebar destination, without that choice.
     public static let isOnByDefault = false
     public static let defaultAddress = "http://localhost:8025"
 

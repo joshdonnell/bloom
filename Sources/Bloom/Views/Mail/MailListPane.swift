@@ -95,7 +95,15 @@ struct MailListPane: View {
     @ViewBuilder
     private var content: some View {
         let list = mailbox.list
-        if case .disconnected(.unauthorised) = mailbox.connection {
+        if let error = mailbox.bundledError, list.messages.isEmpty {
+            EmptyStateView(
+                glyph: "envelope.badge.shield.half.filled",
+                title: "Can't start incoming mails",
+                message: error,
+                actionTitle: "Try Again",
+                action: mailbox.retry
+            )
+        } else if case .disconnected(.unauthorised) = mailbox.connection {
             EmptyStateView(
                 glyph: "lock",
                 title: "Inbox requires a password",
@@ -175,7 +183,7 @@ struct MailListPane: View {
                 .font(Typo.caption)
                 .foregroundStyle(Palette.textSecondary)
                 .lineLimit(1)
-                .help(failure.message)
+                .help(mailbox.bundledError ?? failure.message)
             Spacer(minLength: 0)
             Button("Try Again", action: mailbox.retry)
                 .buttonStyle(.borderless)

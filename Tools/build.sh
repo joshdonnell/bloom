@@ -55,7 +55,6 @@ cp "$BIN_DIR/bloom-mail-server" "$APP/Contents/MacOS/bloom-mail-server"
 # a user enabling Incoming mails never needs a package manager or a runtime download.
 mailpit_binary="$("${0:A:h}/mailpit-binary.sh")"
 cp "$mailpit_binary" "$APP/Contents/MacOS/mailpit"
-cp "${mailpit_binary:h}/LICENSE" "$APP/Contents/Resources/Mailpit-LICENSE"
 mkdir -p "$APP/Contents/Library/LaunchDaemons"
 cp Resources/be.spatie.bloom.sleep.plist "$APP/Contents/Library/LaunchDaemons/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
@@ -203,7 +202,7 @@ embed_sparkle() {
 
 embed_sparkle
 
-zsh Tools/package-licences.sh "$APP" "$(spm_scratch_containing checkouts)/checkouts"
+zsh Tools/package-licences.sh "$APP" "$(spm_scratch_containing checkouts)/checkouts" "${mailpit_binary:h}/LICENSE"
 
 # The accent Bloom hands to AppKit, checked against the one Bloom draws with itself.
 #

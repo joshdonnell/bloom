@@ -10,7 +10,12 @@ struct MailSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Enable incoming mails", isOn: preferences.$isEnabled)
+                Toggle(isOn: preferences.$isEnabled) {
+                    Text("Enable incoming mails")
+                    Text(preferences.usesBundledServer
+                         ? "Bloom receives test emails while it is open. No separate installation is needed."
+                         : "Show messages from your existing test inbox.")
+                }
                 Picker("Inbox", selection: preferences.$usesBundledServer) {
                     Text("Built in").tag(true)
                     Text("Existing server").tag(false)
@@ -24,15 +29,26 @@ struct MailSettingsView: View {
             } header: {
                 Text("Incoming mails")
             } footer: {
-                VStack(alignment: .leading, spacing: Metrics.spacingSmall) {
-                    Text(status)
-                    if preferences.usesBundledServer {
-                        Text("Set your app's SMTP host to 127.0.0.1 and port to \(smtpPort). Use no encryption or authentication.")
-                    } else {
-                        Text("Bloom connects to the inbox at this URL. Configure your app's SMTP address separately.")
+                Text(status).settingsFootnote()
+            }
+
+            Section {
+                if preferences.usesBundledServer {
+                    SettingsRow("SMTP host") {
+                        Text("127.0.0.1").font(Typo.codeSmall).textSelection(.enabled)
                     }
+                    SettingsRow("SMTP port") {
+                        Text(String(smtpPort)).font(Typo.codeSmall).textSelection(.enabled)
+                    }
+                    SettingsRow("Encryption") { Text("None") }
+                    SettingsRow("Authentication") { Text("None") }
+                } else {
+                    Text("Point your app's SMTP connection at your existing test server. The inbox URL above is for Bloom to read its messages.")
+                        .font(Typo.body)
                 }
-                .settingsFootnote()
+                MailSetupButton(usesBundledServer: preferences.usesBundledServer)
+            } header: {
+                Text("Send test mail from your app")
             }
         }
         .settingsForm()

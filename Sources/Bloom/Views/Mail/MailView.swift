@@ -12,7 +12,7 @@ struct MailView: View {
 
             Group {
                 if showsEmptyInbox {
-                    MailWelcomeView(usesBundledServer: mailbox.usesBundledServer)
+                    MailWelcomeView(port: mailbox.smtpPort)
                 } else {
                     HStack(spacing: 0) {
                         MailListPane()

@@ -1,9 +1,8 @@
 import SwiftUI
-import BloomCore
 
 /// The connected inbox before its first message. There is no reader or search result to show yet.
 struct MailWelcomeView: View {
-    let usesBundledServer: Bool
+    let port: Int
 
     var body: some View {
         VStack(spacing: Metrics.gutter) {
@@ -23,7 +22,7 @@ struct MailWelcomeView: View {
                     .multilineTextAlignment(.center)
             }
 
-            MailSetupButton(usesBundledServer: usesBundledServer)
+            MailSetupButton(port: port)
         }
         .frame(maxWidth: 400)
         .padding(Metrics.pane)
@@ -33,14 +32,14 @@ struct MailWelcomeView: View {
 
 /// The same guide from the empty inbox and Settings, with the port of this app bundle.
 struct MailSetupButton: View {
-    let usesBundledServer: Bool
+    let port: Int
     @State private var showingGuide = false
 
     var body: some View {
         Button("How to send a test email") { showingGuide = true }
             .buttonStyle(.bordered)
             .popover(isPresented: $showingGuide, arrowEdge: .bottom) {
-                MailSetupGuide(usesBundledServer: usesBundledServer)
+                MailSetupGuide(port: port)
                     .frame(width: 340)
                     .padding(Metrics.pane)
             }
@@ -48,33 +47,24 @@ struct MailSetupButton: View {
 }
 
 private struct MailSetupGuide: View {
-    let usesBundledServer: Bool
-
-    private var smtpPort: Int {
-        MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).smtp
-    }
+    let port: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.gutter) {
             Text("Send a test email")
                 .font(Typo.title)
 
-            if usesBundledServer {
-                Text("Set your app's SMTP connection to:")
-                    .font(Typo.body)
-                VStack(alignment: .leading, spacing: Metrics.spacing) {
-                    setting("Host", "127.0.0.1")
-                    setting("Port", String(smtpPort))
-                    setting("Encryption", "None")
-                    setting("Authentication", "None")
-                }
-                Text("Keep Bloom open, then send an email from your app. Bloom will capture it here.")
-                    .font(Typo.caption)
-                    .foregroundStyle(Palette.textSecondary)
-            } else {
-                Text("Point your app's SMTP connection at your existing test server. Bloom reads mail through the inbox URL in Settings.")
-                    .font(Typo.body)
+            Text("Set your app's SMTP connection to:")
+                .font(Typo.body)
+            VStack(alignment: .leading, spacing: Metrics.spacing) {
+                setting("Host", "127.0.0.1")
+                setting("Port", String(port))
+                setting("Encryption", "None")
+                setting("Authentication", "None")
             }
+            Text("Keep Bloom open, then send an email from your app. Bloom will capture it here.")
+                .font(Typo.caption)
+                .foregroundStyle(Palette.textSecondary)
         }
     }
 

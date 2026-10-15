@@ -9,10 +9,9 @@ import BloomCore
 /// connection is and how long to wait) is `MailboxLink`, both in the core with their
 /// tests. This is the part neither can be: the requests, the socket, the timers.
 ///
-/// The loop that finds Mailpit and keeps the websocket open is one task, `loop`. Until
-/// Mailpit first answers it asks every thirty seconds, and whenever Bloom comes to the front; once
-/// it has answered, a dropped socket is retried with a backoff. A changed address or switch in
-/// Settings cancels the loop and starts again.
+/// The loop that starts the inbox and keeps the websocket open is one task, `loop`. While the
+/// server starts it probes each second; once connected, a dropped socket is retried with a
+/// backoff. A changed SMTP port or switch in Settings cancels the loop and starts again.
 @MainActor
 @Observable
 final class Mailbox {
@@ -24,9 +23,8 @@ final class Mailbox {
     /// between "no mail" and "not asked yet".
     private(set) var hasReadList = false
     private(set) var isLoadingPage = false
-    /// What Settings holds, as typed, for the sentences that name it.
-    private(set) var address = MailpitSettings.defaultAddress
-    private(set) var usesBundledServer = MailpitSettings.usesBundledServerByDefault
+    let address = MailpitSettings.bundledAddress(forBundleIdentifier: Bundle.main.bundleIdentifier)
+    private(set) var smtpPort = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).smtp
     private(set) var bundledError: String?
     private(set) var client: MailpitClient?
     /// The row selected in Mail's list. One for the app, like the list it is a row of.
@@ -55,7 +53,6 @@ final class Mailbox {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var search: Task<Void, Never>?
     @ObservationIgnored private var settingsChange: Task<Void, Never>?
-    @ObservationIgnored private var externalAddress = MailpitSettings.defaultAddress
     @ObservationIgnored private let bundledServer = BundledMailServer()
 
     private init() {
@@ -68,8 +65,8 @@ final class Mailbox {
     func start() {
         guard !started else { return }
         started = true
-        // An existing server may have been started after Bloom. Coming to the front is the moment
-        // to look, rather than waiting for the next background probe.
+        // The bundled server may have stopped unexpectedly. Coming to the front prompts another
+        // look, rather than waiting for the next background probe.
         // swiftlint:disable:next discarded_notification_center_observer
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
@@ -99,17 +96,15 @@ final class Mailbox {
         restart()
     }
 
-    /// Settings moved. Debounced, because the address field reports every keystroke and each one
-    /// would otherwise knock on a half typed address.
+    /// Settings moved. Debounced so a port edit and a switch change made together cause one
+    /// restart rather than two.
     ///
     /// Compared before anything is scheduled, because the notification behind this fires for every
-    /// default the app writes, not only these two. And compared again after the wait: an address
-    /// typed back to what it was, or a switch flipped and flipped back inside it, is no change, and
-    /// restarting for it would replace a working connection with a search.
+    /// default the app writes, not only these two. And compared again after the wait: a port typed
+    /// back to what it was, or a switch flipped back inside it, is no change.
     private func settingsChanged() {
         guard Self.storedEnabled != link.presence.isEnabled
-                || Self.storedBundled != usesBundledServer
-                || Self.storedAddress != externalAddress else {
+                || Self.storedSMTPPort != smtpPort else {
             settingsChange?.cancel()
             settingsChange = nil
             return
@@ -120,8 +115,7 @@ final class Mailbox {
             let isEnabled = Self.storedEnabled
             guard !Task.isCancelled,
                   isEnabled != link.presence.isEnabled
-                    || Self.storedBundled != usesBundledServer
-                    || Self.storedAddress != externalAddress else { return }
+                    || Self.storedSMTPPort != smtpPort else { return }
             link.reconfigure(isEnabled: isEnabled)
             restart()
         }
@@ -139,26 +133,19 @@ final class Mailbox {
 
     private func restart() {
         loop?.cancel()
-        externalAddress = Self.storedAddress
-        usesBundledServer = Self.storedBundled
-        address = usesBundledServer
-            ? MailpitSettings.bundledAddress(forBundleIdentifier: Bundle.main.bundleIdentifier)
-            : externalAddress
-        if !link.presence.isEnabled || !usesBundledServer { bundledServer.stop() }
+        let previousPort = smtpPort
+        smtpPort = Self.storedSMTPPort
+        if !link.presence.isEnabled || smtpPort != previousPort { bundledServer.stop() }
         bundledError = nil
-        let previous = client?.base
-        let client = MailpitSettings.base(from: address).map { MailpitClient(base: $0) }
+        let client = MailpitClient(base: URL(string: address)!)
         // Off means off: with no client the reader stops fetching too.
         self.client = link.presence.isEnabled ? client : nil
         link.startLooking()
-        guard let client = self.client else {
+        guard self.client != nil else {
             link.stopLooking()
             forgetMailbox()
             return
         }
-        // Another Mailpit's mail is not this one's, and leaving it up until the new one answers
-        // would show rows that a click on would fetch from the wrong server.
-        if client.base != previous { forgetMailbox() }
         loop = Task { await run(client) }
     }
 
@@ -174,28 +161,35 @@ final class Mailbox {
     /// steps is `MailboxLink`'s.
     private func run(_ client: MailpitClient) async {
         while !Task.isCancelled {
-            if usesBundledServer {
-                do {
-                    try bundledServer.start(ports: MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier))
-                } catch {
-                    bundledError = error.localizedDescription
-                    _ = link.probed(.failure(.unreachable))
-                    try? await Task.sleep(for: .seconds(2))
-                    continue
-                }
+            let defaults = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier)
+            guard MailpitSettings.isValidSMTPPort(smtpPort, forBundleIdentifier: Bundle.main.bundleIdentifier) else {
+                bundledError = "Choose an SMTP port from 1024 to 65535, other than \(defaults.api)."
+                _ = link.probed(.failure(.unreachable))
+                return
+            }
+            do {
+                try bundledServer.start(ports: .init(smtp: smtpPort, api: defaults.api))
+            } catch BundledMailServer.Failure.restarting {
+                try? await Task.sleep(for: .milliseconds(100))
+                continue
+            } catch {
+                bundledError = error.localizedDescription
+                _ = link.probed(.failure(.unreachable))
+                try? await Task.sleep(for: .seconds(2))
+                continue
             }
             let answer = await client.info()
             // **Cancelled while the request was out means a restart has already begun**, for a new
             // address or with the switch off. Without this the old loop landed its answer on the
-            // new state: it marked an address that had never answered as answered and set the
+            // new state: it marked a server that had never answered as answered and set the
             // connection beside it.
             guard !Task.isCancelled else { return }
-            if usesBundledServer {
-                if case .success = answer {
-                    bundledError = nil
-                } else if !bundledServer.isRunning {
-                    bundledError = "The built-in inbox stopped while starting. Try again or choose Existing server."
-                }
+            if case .success = answer {
+                bundledError = nil
+            } else if !bundledServer.isRunning {
+                let ports = MailpitSettings.Ports(smtp: smtpPort, api: defaults.api)
+                bundledError = BundledMailServer.portConflict(for: ports)?.localizedDescription
+                    ?? "The inbox stopped while starting. Try again."
             }
             let pause: Duration
             switch link.probed(answer) {
@@ -205,9 +199,8 @@ final class Mailbox {
                 pause = link.dropped(dropped)
             case .wait(let wait):
                 // The bundled process may still be opening its listeners on the first probe.
-                // A missing external server keeps the slower search interval, but our own gets
-                // another look promptly after startup or a crash.
-                pause = usesBundledServer ? .seconds(1) : wait
+                // It gets another look promptly after startup or a crash.
+                pause = min(wait, .seconds(1))
             }
             do {
                 try await Task.sleep(for: pause)
@@ -452,26 +445,24 @@ final class Mailbox {
 
     // MARK: - Settings
 
-    /// The sentence under the source settings.
-    func statusLine(isEnabled: Bool, usesBundledServer: Bool, address typed: String) -> String {
-        guard !usesBundledServer else {
-            if !isEnabled { return "Off. Bloom will start the inbox when incoming mails are switched on." }
-            if let bundledError { return bundledError }
-            return connection == .live ? "Ready to receive incoming mails." : "Starting the inbox."
+    /// The sentence below the switch follows the field before the debounced process restart.
+    func statusLine(isEnabled: Bool, port: Int) -> String {
+        let apiPort = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).api
+        guard MailpitSettings.isValidSMTPPort(port, forBundleIdentifier: Bundle.main.bundleIdentifier) else {
+            return "Choose an SMTP port from 1024 to 65535, other than \(apiPort)."
         }
-        return link.statusLine(isEnabled: isEnabled, typed: typed, following: address)
+        if !isEnabled { return "Off. Bloom will start the inbox when incoming mails are switched on." }
+        if port != smtpPort { return "Switching to SMTP port \(port)." }
+        if let bundledError { return bundledError }
+        return connection == .live ? "Ready to receive incoming mails." : "Starting the inbox."
     }
 
     private static var storedEnabled: Bool {
         UserDefaults.standard.object(forKey: MailpitSettings.enabledKey) as? Bool ?? MailpitSettings.isOnByDefault
     }
 
-    private static var storedAddress: String {
-        UserDefaults.standard.string(forKey: MailpitSettings.addressKey) ?? MailpitSettings.defaultAddress
-    }
-
-    private static var storedBundled: Bool {
-        UserDefaults.standard.object(forKey: MailpitSettings.bundledKey) as? Bool
-            ?? MailpitSettings.usesBundledServerByDefault
+    private static var storedSMTPPort: Int {
+        UserDefaults.standard.object(forKey: MailpitSettings.smtpPortKey) as? Int
+            ?? MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).smtp
     }
 }

@@ -104,27 +104,4 @@ public struct MailboxLink: Equatable, Sendable {
         )
     }
 
-    // MARK: - The sentence under the address field
-
-    /// What Bloom last heard at an address, for Settings > Incoming mails. The status belongs
-    /// under the field so the reader can see whether that address worked.
-    ///
-    /// Takes the switch and the address as the field holds them, because the field is ahead of the
-    /// link by the app's debounce, and a sentence about the old address under a new one would be
-    /// wrong for that moment. `following` is the address this link is about.
-    public func statusLine(isEnabled: Bool, typed: String, following: String) -> String {
-        guard isEnabled else { return "Off. Bloom will connect when incoming mails are switched on." }
-        guard MailpitSettings.base(from: typed) != nil else {
-            return "This is not an address Bloom can use. It should look like \(MailpitSettings.defaultAddress)."
-        }
-        guard presence.isEnabled, typed == following else { return "Connecting to the inbox at this address." }
-        switch connection {
-        case .live:
-            return "Connected. Open Incoming mails from the sidebar footer."
-        case .connecting, .idle:
-            return "Connecting to the inbox at this address."
-        case .disconnected(let failure):
-            return "\(failure.message) Bloom will keep trying."
-        }
-    }
 }

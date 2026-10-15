@@ -74,33 +74,10 @@ private func page(_ ids: [String], start: Int = 0, matching: Int? = nil, unread:
     )
 }
 
-// MARK: - The address
+// MARK: - Bundled ports
 
-@Suite("Mailpit address")
-struct MailpitAddressTests {
-    @Test("what people type comes out as an address", arguments: [
-        ("http://localhost:8025", "http://localhost:8025"),
-        ("localhost:8025", "http://localhost:8025"),
-        ("  http://localhost:8025/  ", "http://localhost:8025"),
-        ("https://mail.example.test", "https://mail.example.test"),
-        ("http://127.0.0.1:8025/mailpit/", "http://127.0.0.1:8025/mailpit"),
-    ])
-    func normalises(_ typed: String, _ expected: String) {
-        #expect(MailpitSettings.base(from: typed)?.absoluteString == expected)
-    }
-
-    @Test("something that is not an address is refused rather than guessed at", arguments: [
-        "", "   ", "ftp://localhost:8025", "http://",
-    ])
-    func refuses(_ typed: String) {
-        #expect(MailpitSettings.base(from: typed) == nil)
-    }
-
-    @Test("the default is an address")
-    func defaultParses() {
-        #expect(MailpitSettings.base(from: MailpitSettings.defaultAddress) != nil)
-    }
-
+@Suite("Bundled mail ports")
+struct BundledMailPortTests {
     @Test("the bundled server keeps production and development ports separate")
     func bundledPorts() {
         #expect(MailpitSettings.bundledPorts(forBundleIdentifier: Store.primaryBundleIdentifier)
@@ -111,6 +88,14 @@ struct MailpitAddressTests {
             == .init(smtp: 1026, api: 8026))
         #expect(MailpitSettings.bundledAddress(forBundleIdentifier: Store.devBundleIdentifier)
             == "http://127.0.0.1:8026")
+    }
+
+    @Test("SMTP ports must be unprivileged, distinct from the API, and no larger than 65535", arguments: [
+        (0, false), (1023, false), (1024, true), (1026, true),
+        (8026, false), (65535, true), (65536, false),
+    ])
+    func validates(_ port: Int, _ expected: Bool) {
+        #expect(MailpitSettings.isValidSMTPPort(port, forBundleIdentifier: Store.devBundleIdentifier) == expected)
     }
 }
 
@@ -307,7 +292,7 @@ struct MailpitClientTests {
          "https://mail.example.test/mailpit/view/a1.html"),
     ])
     func addresses(_ base: String, _ events: String, _ html: String) throws {
-        let client = MailpitClient(base: try #require(MailpitSettings.base(from: base)))
+        let client = MailpitClient(base: try #require(URL(string: base)))
         #expect(client.eventsURL.absoluteString == events)
         #expect(client.htmlURL(of: MailpitMessageID("a1")).absoluteString == html)
     }
@@ -630,62 +615,5 @@ struct MailboxLinkTests {
         #expect(link.connection == .connecting)
         link.reconfigure(isEnabled: false)
         #expect(link.connection == .idle)
-    }
-}
-
-// MARK: - The sentence under the address field
-
-@Suite("Mailpit status line")
-struct MailpitStatusLineTests {
-    private let address = MailpitSettings.defaultAddress
-    private let info = MailpitInfo(version: "v1.31.2", messages: 0, unread: 0)
-
-    @Test("switched off, it says so whatever the address says")
-    func off() {
-        let link = MailboxLink(isEnabled: false)
-        #expect(link.statusLine(isEnabled: false, typed: "nonsense", following: address) == "Off. Bloom will connect when incoming mails are switched on.")
-    }
-
-    @Test("an address that is not one is said to be so")
-    func notAnAddress() {
-        let link = MailboxLink(isEnabled: true)
-        #expect(link.statusLine(isEnabled: true, typed: "ftp://x", following: address).hasPrefix("This is not an address"))
-    }
-
-    /// The field runs ahead of the link by the app's debounce, and the link's answer is about the
-    /// old address until it catches up.
-    @Test("an address the link is not following yet is being looked for, not reported on")
-    func ahead() {
-        var link = MailboxLink(isEnabled: true)
-        _ = link.probed(.success(info))
-        link.listening()
-        let line = link.statusLine(isEnabled: true, typed: "http://localhost:9025", following: address)
-        #expect(line == "Connecting to the inbox at this address.")
-    }
-
-    @Test("connected says where Incoming mails is")
-    func connected() {
-        var link = MailboxLink(isEnabled: true)
-        _ = link.probed(.success(info))
-        link.listening()
-        #expect(link.statusLine(isEnabled: true, typed: address, following: address) == "Connected. Open Incoming mails from the sidebar footer.")
-    }
-
-    @Test("a failure says what happened and that Bloom will retry")
-    func failures() {
-        var never = MailboxLink(isEnabled: true)
-        _ = never.probed(.failure(.unreachable))
-        #expect(
-            never.statusLine(isEnabled: true, typed: address, following: address)
-                == "The inbox did not answer at this address. Bloom will keep trying."
-        )
-
-        var dropped = MailboxLink(isEnabled: true)
-        _ = dropped.probed(.success(info))
-        _ = dropped.dropped(.unreachable)
-        #expect(
-            dropped.statusLine(isEnabled: true, typed: address, following: address)
-                == "The inbox did not answer at this address. Bloom will keep trying."
-        )
     }
 }

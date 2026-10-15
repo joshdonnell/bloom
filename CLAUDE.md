@@ -271,7 +271,7 @@ two that outgrew a single directory are split by what they are for rather than b
 `Incoming mails` is an app-wide destination opened from the sidebar footer. Its list and reader
 share one connection to Mailpit, so they live together rather than under workspace panes. By
 default Bloom starts the bundled server on loopback when the feature is enabled. Dev uses separate
-ports and application data. An existing inbox URL remains available in Settings.
+ports and application data. The SMTP port can be changed in Settings; the API port stays internal.
 
 Four directories sit beside `Views/` and are not panes, because none of them is drawn in one
 place. `Design/` is the theme and the snapshot galleries, `State/` is `AppModel` with its

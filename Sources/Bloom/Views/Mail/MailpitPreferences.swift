@@ -8,6 +8,6 @@ import BloomCore
 /// `Mailbox` they changed: it listens for that itself.
 struct MailpitPreferences: DynamicProperty {
     @AppStorage(MailpitSettings.enabledKey) var isEnabled = MailpitSettings.isOnByDefault
-    @AppStorage(MailpitSettings.bundledKey) var usesBundledServer = MailpitSettings.usesBundledServerByDefault
-    @AppStorage(MailpitSettings.addressKey) var address = MailpitSettings.defaultAddress
+    @AppStorage(MailpitSettings.smtpPortKey)
+    var smtpPort = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).smtp
 }

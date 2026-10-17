@@ -86,6 +86,7 @@ struct BundledMailServerTests {
         defer { server.stop() }
 
         try server.start(ports: .init(smtp: firstSMTP.port, api: api.port))
+        #expect(server.isServing(smtpPort: firstSMTP.port))
         let firstPID = try #require(server.processIdentifier)
         let firstReady = await eventually { !isPortFree(firstSMTP.port) && !isPortFree(api.port) }
         #expect(firstReady)
@@ -105,6 +106,8 @@ struct BundledMailServerTests {
         }
         let replacement = try #require(secondPID)
         #expect(replacement != firstPID)
+        #expect(!server.isServing(smtpPort: firstSMTP.port))
+        #expect(server.isServing(smtpPort: secondSMTP.port))
         let secondReady = await eventually {
             isPortFree(firstSMTP.port) && !isPortFree(secondSMTP.port) && !isPortFree(api.port)
         }

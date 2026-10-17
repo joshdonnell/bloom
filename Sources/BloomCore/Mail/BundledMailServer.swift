@@ -36,6 +36,7 @@ public final class BundledMailServer {
     }
 
     public var isRunning: Bool { supervisor?.isRunning == true }
+    public func isServing(smtpPort: Int) -> Bool { isRunning && activePorts?.smtp == smtpPort }
     var processIdentifier: Int32? { isRunning ? supervisor?.processIdentifier : nil }
 
     public func start(ports: MailpitSettings.Ports) throws {

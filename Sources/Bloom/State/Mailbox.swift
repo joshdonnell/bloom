@@ -50,6 +50,14 @@ final class Mailbox {
 
     var connection: MailboxConnection { link.connection }
 
+    /// The bridge may send only through this app's connected server, never another process that
+    /// happens to occupy the configured SMTP port while our inbox cannot start.
+    var mailSendPort: Int? {
+        guard link.presence.isEnabled, connection == .live,
+              bundledServer.isServing(smtpPort: smtpPort) else { return nil }
+        return smtpPort
+    }
+
     @ObservationIgnored private var started = false
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var search: Task<Void, Never>?

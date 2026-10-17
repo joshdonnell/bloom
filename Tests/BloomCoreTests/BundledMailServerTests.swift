@@ -43,9 +43,10 @@ struct BundledMailServerTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let smtp = try reservePort()
-        let api = try reservePort()
+        let api = try reservePort(reusing: true)
         Darwin.close(smtp.descriptor)
         defer { Darwin.close(api.descriptor) }
+        guard Darwin.listen(api.descriptor, 1) == 0 else { throw POSIXError(.EIO) }
         let server = fixture.server
 
         do {
@@ -56,6 +57,19 @@ struct BundledMailServerTests {
             #expect(failure.localizedDescription.contains("Stop the app using it"))
         }
         #expect(!server.isRunning)
+    }
+
+    @Test("a closed inbox connection does not look like another app owning the port")
+    func recentlyClosedConnection() throws {
+        let smtp = try reservePort()
+        Darwin.close(smtp.descriptor)
+        let apiPort = try recentlyClosedPort()
+
+        // A plain bind still sees TIME_WAIT. The process manager must use the same socket option
+        // as the actual server, while the occupied-listener tests above must still fail.
+        #expect(!isPortFree(apiPort))
+        let conflict = BundledMailServer.portConflict(for: .init(smtp: smtp.port, api: apiPort))
+        #expect(conflict == nil)
     }
 
     @Test("changing the SMTP port replaces the process and releases its old listener")
@@ -133,9 +147,16 @@ struct BundledMailServerTests {
         let port: Int
     }
 
-    private func reservePort() throws -> Reservation {
+    private func reservePort(reusing: Bool = false) throws -> Reservation {
         let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw POSIXError(.ENFILE) }
+        if reusing {
+            var reuse: Int32 = 1
+            guard Darwin.setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+                Darwin.close(descriptor)
+                throw POSIXError(.EIO)
+            }
+        }
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
@@ -160,6 +181,32 @@ struct BundledMailServerTests {
             throw POSIXError(.EIO)
         }
         return Reservation(descriptor: descriptor, port: Int(UInt16(bigEndian: address.sin_port)))
+    }
+
+    private func recentlyClosedPort() throws -> Int {
+        let listener = try reservePort()
+        defer { Darwin.close(listener.descriptor) }
+        guard Darwin.listen(listener.descriptor, 1) == 0 else { throw POSIXError(.EIO) }
+
+        let client = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard client >= 0 else { throw POSIXError(.ENFILE) }
+        defer { Darwin.close(client) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(listener.port).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(client, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else { throw POSIXError(.ECONNREFUSED) }
+        let accepted = Darwin.accept(listener.descriptor, nil, nil)
+        guard accepted >= 0 else { throw POSIXError(.EIO) }
+        // Close this end first so the old listener's port enters TIME_WAIT.
+        Darwin.close(accepted)
+        return listener.port
     }
 
     private func isPortFree(_ port: Int) -> Bool {

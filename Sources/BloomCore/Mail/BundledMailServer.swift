@@ -110,6 +110,12 @@ public final class BundledMailServer {
         let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return false }
         defer { Darwin.close(descriptor) }
+        // Mailpit can rebind after an open inbox connection closes. Without SO_REUSEADDR, this
+        // probe mistakes the old connection's TIME_WAIT for another app owning the listener.
+        var reuse: Int32 = 1
+        guard Darwin.setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            return false
+        }
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)

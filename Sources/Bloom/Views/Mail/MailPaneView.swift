@@ -173,6 +173,7 @@ struct MailPaneView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Metrics.inset)
                 }
+                .defaultScrollAnchor(.topLeading)
             // Said, with a way to ask again, rather than a spinner that never stops: the source is
             // a second request, and it can fail when the message did not.
             case .failure(let failure):

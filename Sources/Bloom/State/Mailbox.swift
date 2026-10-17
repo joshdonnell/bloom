@@ -26,6 +26,7 @@ final class Mailbox {
     let address = MailpitSettings.bundledAddress(forBundleIdentifier: Bundle.main.bundleIdentifier)
     private(set) var smtpPort = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).smtp
     private(set) var bundledError: String?
+    private(set) var bundledFailure: BundledMailServer.Failure?
     private(set) var client: MailpitClient?
     /// The row selected in Mail's list. One for the app, like the list it is a row of.
     private(set) var selection: MailpitMessageID?
@@ -137,6 +138,7 @@ final class Mailbox {
         smtpPort = Self.storedSMTPPort
         if !link.presence.isEnabled || smtpPort != previousPort { bundledServer.stop() }
         bundledError = nil
+        bundledFailure = nil
         let client = MailpitClient(base: URL(string: address)!)
         // Off means off: with no client the reader stops fetching too.
         self.client = link.presence.isEnabled ? client : nil
@@ -164,6 +166,7 @@ final class Mailbox {
             let defaults = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier)
             guard MailpitSettings.isValidSMTPPort(smtpPort, forBundleIdentifier: Bundle.main.bundleIdentifier) else {
                 bundledError = "Choose an SMTP port from 1024 to 65535, other than \(defaults.api)."
+                bundledFailure = .invalidSMTPPort(smtpPort)
                 _ = link.probed(.failure(.unreachable))
                 return
             }
@@ -173,23 +176,24 @@ final class Mailbox {
                 try? await Task.sleep(for: .milliseconds(100))
                 continue
             } catch {
+                bundledFailure = error as? BundledMailServer.Failure
                 bundledError = error.localizedDescription
                 _ = link.probed(.failure(.unreachable))
                 try? await Task.sleep(for: .seconds(2))
                 continue
             }
+            bundledError = nil
+            bundledFailure = nil
             let answer = await client.info()
             // **Cancelled while the request was out means a restart has already begun**, for a new
             // address or with the switch off. Without this the old loop landed its answer on the
             // new state: it marked a server that had never answered as answered and set the
             // connection beside it.
             guard !Task.isCancelled else { return }
-            if case .success = answer {
-                bundledError = nil
-            } else if !bundledServer.isRunning {
+            if case .failure = answer, !bundledServer.isRunning {
                 let ports = MailpitSettings.Ports(smtp: smtpPort, api: defaults.api)
-                bundledError = BundledMailServer.portConflict(for: ports)?.localizedDescription
-                    ?? "The inbox stopped while starting. Try again."
+                bundledFailure = BundledMailServer.portConflict(for: ports)
+                bundledError = bundledFailure?.localizedDescription ?? "The inbox stopped while starting. Try again."
             }
             let pause: Duration
             switch link.probed(answer) {
@@ -445,13 +449,19 @@ final class Mailbox {
 
     // MARK: - Settings
 
-    /// The sentence below the switch follows the field before the debounced process restart.
-    func statusLine(isEnabled: Bool, port: Int) -> String {
+    /// A port problem belongs beside the field, including while it is ahead of the debounced restart.
+    func portIssue(isEnabled: Bool, port: Int) -> String? {
         let apiPort = MailpitSettings.bundledPorts(forBundleIdentifier: Bundle.main.bundleIdentifier).api
-        guard MailpitSettings.isValidSMTPPort(port, forBundleIdentifier: Bundle.main.bundleIdentifier) else {
-            return "Choose an SMTP port from 1024 to 65535, other than \(apiPort)."
-        }
+        if !(1024...65535).contains(port) { return "Choose an SMTP port from 1024 to 65535." }
+        if port == apiPort { return "Port \(port) is reserved for Bloom's inbox. Choose another SMTP port." }
+        guard isEnabled, port == smtpPort, case .smtpPortInUse = bundledFailure else { return nil }
+        return bundledError
+    }
+
+    /// General inbox state stays with the switch. SMTP port problems appear beside that field.
+    func statusLine(isEnabled: Bool, port: Int) -> String? {
         if !isEnabled { return "Off. Bloom will start the inbox when incoming mails are switched on." }
+        if portIssue(isEnabled: isEnabled, port: port) != nil { return nil }
         if port != smtpPort { return "Switching to SMTP port \(port)." }
         if let bundledError { return bundledError }
         return connection == .live ? "Ready to receive incoming mails." : "Starting the inbox."

@@ -17,7 +17,7 @@ public final class BundledMailServer {
             case .missing: "The built-in inbox is missing from this Bloom installation."
             case .invalidSMTPPort(let port): "SMTP port \(port) cannot be used. Choose a port from 1024 to 65535 that differs from Bloom's inbox port."
             case .smtpPortInUse(let port): "SMTP port \(port) is already in use. Choose another port in Settings or stop the app using it."
-            case .apiPortInUse(let port): "Bloom's inbox port \(port) is already in use. Stop the app using it and try again."
+            case .apiPortInUse(let port): "The built-in inbox can't start because its internal port \(port) is in use. Stop the app using it and try again."
             case .restarting: "Restarting the inbox."
             }
         }

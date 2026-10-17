@@ -17,7 +17,7 @@ struct MailSettingsView: View {
             } header: {
                 Text("Incoming mails")
             } footer: {
-                Text(status).settingsFootnote()
+                if let status { Text(status).settingsFootnote() }
             }
 
             Section {
@@ -25,9 +25,16 @@ struct MailSettingsView: View {
                     Text("127.0.0.1").font(Typo.codeSmall).textSelection(.enabled)
                 }
                 SettingsRow("SMTP port") {
-                    TextField("SMTP port", value: preferences.$smtpPort, format: .number.grouping(.never))
-                        .labelsHidden()
-                        .frame(width: 96)
+                    VStack(alignment: .leading, spacing: Metrics.spacingSmall) {
+                        TextField("SMTP port", value: preferences.$smtpPort, format: .number.grouping(.never))
+                            .labelsHidden()
+                            .frame(width: 96)
+                        if let portIssue {
+                            Text(portIssue)
+                                .settingsFootnote()
+                                .foregroundStyle(Palette.warning)
+                        }
+                    }
                 }
                 SettingsRow("Encryption") { Text("None") }
                 SettingsRow("Authentication") { Text("None") }
@@ -39,7 +46,11 @@ struct MailSettingsView: View {
         .settingsForm()
     }
 
-    private var status: String {
+    private var status: String? {
         mailbox.statusLine(isEnabled: preferences.isEnabled, port: preferences.smtpPort)
+    }
+
+    private var portIssue: String? {
+        mailbox.portIssue(isEnabled: preferences.isEnabled, port: preferences.smtpPort)
     }
 }

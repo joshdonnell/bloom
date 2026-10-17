@@ -38,7 +38,6 @@ struct MailSettingsView: View {
                 }
                 SettingsRow("Encryption") { Text("None") }
                 SettingsRow("Authentication") { Text("None") }
-                MailSetupButton(port: preferences.smtpPort)
             } header: {
                 Text("Send test mail from your app")
             }

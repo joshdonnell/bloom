@@ -8,6 +8,7 @@ import BloomCore
 /// or in Mailpit's own UI turns into
 /// "Message deleted" rather than staying on screen as if it were still there.
 struct MailPaneView: View {
+    @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var openURL
 
     private enum Loaded: Equatable {
@@ -151,7 +152,13 @@ struct MailPaneView: View {
         switch part {
         case .html:
             if let url = mailbox.htmlURL(of: message.id) {
-                MailBodyWebView(url: url) { link in openURL(link) }
+                MailBodyWebView(
+                    url: url,
+                    canOpenInBloom: app.lastSelectedWorkspace != nil,
+                    onLink: { link in openURL(link) },
+                    onNewTab: { link in openInWorkspace(link, asPane: false) },
+                    onPane: { link in openInWorkspace(link, asPane: true) }
+                )
             }
         case .text:
             ScrollView {
@@ -189,6 +196,17 @@ struct MailPaneView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .task(id: message.id) { source = await mailbox.source(of: message.id) }
             }
+        }
+    }
+
+    private func openInWorkspace(_ link: URL, asPane: Bool) {
+        guard let workspace = app.lastSelectedWorkspace else { return }
+        app.selection = .workspace(workspace.id)
+        guard let model = app.selectedModel else { return }
+        if asPane {
+            BrowserTab.splitFocused(link, in: model)
+        } else {
+            BrowserTab.openWindow(link, in: model)
         }
     }
 

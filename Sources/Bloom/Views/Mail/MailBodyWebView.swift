@@ -13,14 +13,17 @@ import BloomCore
 /// do load: this is mail the reader's own app just sent, and a template with its images stripped
 /// looks broken in a way the real thing is not.
 ///
-/// **A link opens in the default browser**, since Mail is not tied to a workspace. Anything that
-/// is not http or https is left alone.
+/// A plain click opens a link in the default browser. The link menu can also place it in Bloom's
+/// most recently selected workspace. Anything that is not http or https is left alone.
 struct MailBodyWebView: NSViewRepresentable {
     var url: URL
+    var canOpenInBloom: Bool
     var onLink: @MainActor (URL) -> Void
+    var onNewTab: @MainActor (URL) -> Void
+    var onPane: @MainActor (URL) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onLink: onLink)
+        Coordinator(onLink: onLink, onNewTab: onNewTab, onPane: onPane)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -29,25 +32,90 @@ struct MailBodyWebView: NSViewRepresentable {
         // Nothing an email sets, a cookie or local storage, outlives the view or reaches the
         // browser tabs' own store.
         configuration.websiteDataStore = .nonPersistent()
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = MailPreviewWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
+        view.uiDelegate = context.coordinator
+        view.configureLinkMenu = { [weak coordinator = context.coordinator] menu in
+            coordinator?.addLinkActions(to: menu)
+        }
         return view
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onLink = onLink
+        context.coordinator.onNewTab = onNewTab
+        context.coordinator.onPane = onPane
+        context.coordinator.canOpenInBloom = canOpenInBloom
         guard context.coordinator.loaded != url else { return }
         context.coordinator.loaded = url
         view.load(URLRequest(url: url))
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var onLink: @MainActor (URL) -> Void
-        var loaded: URL?
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        private enum Destination {
+            case tab
+            case pane
+        }
 
-        init(onLink: @escaping @MainActor (URL) -> Void) {
+        var onLink: @MainActor (URL) -> Void
+        var onNewTab: @MainActor (URL) -> Void
+        var onPane: @MainActor (URL) -> Void
+        var canOpenInBloom = false
+        var loaded: URL?
+        private var pendingDestination: Destination?
+
+        init(
+            onLink: @escaping @MainActor (URL) -> Void,
+            onNewTab: @escaping @MainActor (URL) -> Void,
+            onPane: @escaping @MainActor (URL) -> Void
+        ) {
             self.onLink = onLink
+            self.onNewTab = onNewTab
+            self.onPane = onPane
+        }
+
+        func addLinkActions(to menu: NSMenu) {
+            pendingDestination = nil
+            guard canOpenInBloom,
+                  let original = menu.items.first(where: {
+                      $0.identifier?.rawValue == "WKMenuItemIdentifierOpenLinkInNewWindow"
+                  }),
+                  let index = menu.items.firstIndex(of: original) else { return }
+
+            for (offset, title) in ["Open Link in New Tab", "Open Link in Pane"].enumerated() {
+                let item = NSMenuItem(title: title, action: #selector(openInBloom(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = offset
+                item.representedObject = original
+                menu.insertItem(item, at: index + offset + 1)
+            }
+        }
+
+        @objc private func openInBloom(_ sender: NSMenuItem) {
+            guard let original = sender.representedObject as? NSMenuItem,
+                  let action = original.action else { return }
+            pendingDestination = sender.tag == 0 ? .tab : .pane
+            if !NSApp.sendAction(action, to: original.target, from: original) {
+                pendingDestination = nil
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            let destination = pendingDestination
+            pendingDestination = nil
+            guard let url = navigationAction.request.url, BrowserTab.canOpen(url) else { return nil }
+            switch destination {
+            case .tab: onNewTab(url)
+            case .pane: onPane(url)
+            case nil: onLink(url)
+            }
+            return nil
         }
 
         func webView(
@@ -81,5 +149,17 @@ struct MailBodyWebView: NSViewRepresentable {
             guard let loaded else { return false }
             return url.scheme == loaded.scheme && url.host() == loaded.host() && url.port == loaded.port
         }
+    }
+}
+
+/// WebKit builds the native link menu after `menu(for:)`, but before `willOpenMenu`. The menu
+/// contains an Open Link in New Window item whose WebKit action carries the link through
+/// `WKUIDelegate`. The two Bloom items reuse that action so the original menu stays intact.
+private final class MailPreviewWebView: WKWebView {
+    var configureLinkMenu: (@MainActor (NSMenu) -> Void)?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        configureLinkMenu?(menu)
     }
 }

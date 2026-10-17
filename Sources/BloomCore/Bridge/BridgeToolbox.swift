@@ -49,6 +49,7 @@ public struct BridgeToolbox: Sendable {
     /// workspace is in is held nowhere but in memory on the main actor.
     public static let standard = BridgeToolbox(handlers: [
         WhoamiTool(),
+        ProjectSetupGuideTool(),
         ProjectListTool(),
         ProjectAddTool(),
         ProjectHideTool(),

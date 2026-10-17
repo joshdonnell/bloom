@@ -103,6 +103,9 @@ public enum BridgeToolApproval {
     /// thinking about it rather than by inheriting a decision made before it existed.
     public static let selfApproved: Set<String> = [
         "whoami",
+        // This is the settings schema and current local SMTP connection, read without touching
+        // the project. It gives an agent facts to inspect its repository against before editing.
+        "project_setup_guide",
         // Captured by Bloom's local inbox, visible in Incoming mails and deletable there. The
         // address is a label, never a destination outside this Mac.
         "mail_send",

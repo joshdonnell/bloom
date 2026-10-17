@@ -111,6 +111,10 @@ A browser pane normally opens `http://localhost:$BLOOM_PORT`. Set `browser.url` 
 address to the file named by `BLOOM_URL_FILE` from your setup script. The file is ignored by Git and
 read when a browser pane opens.
 
+Workspace agents can call `project_setup_guide` for the supported settings format and this copy of
+Bloom's current local SMTP port. Incoming mails is configured in Bloom Settings, not in the
+repository's `.bloom/settings.toml`.
+
 ### Agent bridge
 
 Workspace agents can ask Bloom to open panes, read the browser or terminal, show media, manage

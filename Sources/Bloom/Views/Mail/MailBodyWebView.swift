@@ -110,12 +110,16 @@ struct MailBodyWebView: NSViewRepresentable {
             let destination = pendingDestination
             pendingDestination = nil
             guard let url = navigationAction.request.url, BrowserTab.canOpen(url) else { return nil }
+            open(url, in: destination)
+            return nil
+        }
+
+        private func open(_ url: URL, in destination: Destination?) {
             switch destination {
             case .tab: onNewTab(url)
             case .pane: onPane(url)
             case nil: onLink(url)
             }
-            return nil
         }
 
         func webView(
@@ -131,6 +135,11 @@ struct MailBodyWebView: NSViewRepresentable {
             // stored: an `<iframe>` pointing at the web is a page fetched because an email said
             // so, and mail clients do not load those either, so the preview should not.
             guard let url = navigationAction.request.url else { return .cancel }
+            if let destination = pendingDestination {
+                pendingDestination = nil
+                if BrowserTab.canOpen(url) { open(url, in: destination) }
+                return .cancel
+            }
             switch navigationAction.navigationType {
             case .linkActivated:
                 if BrowserTab.canOpen(url) { onLink(url) }
